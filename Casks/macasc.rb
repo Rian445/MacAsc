@@ -2,10 +2,10 @@ cask "macasc" do
   version "1.0.0"
   sha256 "a5a6e74f6c14f4913d128149864f6969502b358cc0f62a0287260dec785a9562"
 
-  url "https://github.com/Rian445/MacStorageUtility/releases/download/APP/Mac%20ASC.dmg"
+  url "https://github.com/Rian445/MacAsc/releases/download/APP/Mac%20ASC.dmg"
   name "Mac ASC"
   desc "Menu bar storage analyzer and custom terminal shortcuts utility"
-  homepage "https://github.com/Rian445/MacStorageUtility"
+  homepage "https://github.com/Rian445/MacAsc"
 
   app "Mac ASC.app"
 

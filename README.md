@@ -4,7 +4,7 @@ Mac ASC is a premium, lightweight, and offline-locked macOS menu bar utility bui
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring absolute data privacy.
 
-### 📥 [Download Latest Release DMG](https://github.com/Rian445/MacStorageUtility/releases/download/APP/Mac%20ASC.dmg)
+### 📥 [Download Latest Release DMG](https://github.com/Rian445/MacAsc/releases/download/APP/Mac%20ASC.dmg)
 
 ---
 
@@ -63,7 +63,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 ### Installation
 
 #### Option 1: Direct Download (Recommended)
-1. Download the pre-compiled **[Mac ASC.dmg](https://github.com/Rian445/MacStorageUtility/releases/download/APP/Mac%20ASC.dmg)**.
+1. Download the pre-compiled **[Mac ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/APP/Mac%20ASC.dmg)**.
 2. Double-click the downloaded `.dmg` file to mount it.
 3. Drag **Mac ASC** into your **Applications** folder.
 
@@ -71,7 +71,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 You can tap this repository and install the application directly via Homebrew:
 ```bash
 # Tap the repository directly
-brew tap Rian445/MacStorageUtility https://github.com/Rian445/MacStorageUtility.git
+brew tap Rian445/MacAsc https://github.com/Rian445/MacAsc.git
 
 # Install the application
 brew install --cask macasc
@@ -83,8 +83,8 @@ brew install --cask macasc
 #### Option 3: Build from Source
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/Rian445/MacStorageUtility.git
-   cd MacStorageUtility
+   git clone https://github.com/Rian445/MacAsc.git
+   cd MacAsc
    ```
 2. **Build and Package**:
    Run the build script in the root directory:
