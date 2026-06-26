@@ -80,6 +80,9 @@ brew install --cask macasc
 > [!TIP]
 > **Quarantine Bypass**: Installing via Homebrew Cask automatically runs a postflight script to clear the `com.apple.quarantine` attribute, allowing the app to launch instantly without macOS Gatekeeper verification warnings.
 
+> [!NOTE]
+> **Untrusted Tap Warning**: On recent versions of Homebrew, you may receive a warning: `Refusing to load cask rian445/macasc/macasc from untrusted tap`. If this occurs, simply run `brew trust rian445/macasc` to mark the tap as trusted, then run the install command again.
+
 #### Option 3: Build from Source
 1. **Clone the Repository**:
    ```bash
