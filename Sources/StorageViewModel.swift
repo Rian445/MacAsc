@@ -16,6 +16,7 @@ class StorageViewModel: ObservableObject {
     @Published var isMoleInstalled = false
     @Published var customCommands: [TerminalCommand] = []
     @Published var runningCommandIds: Set<UUID> = []
+    @Published var quickNotes: [QuickNote] = []
     
     // MARK: - Dependencies & Listeners
     private let storageManager = StorageManager()
@@ -29,6 +30,8 @@ class StorageViewModel: ObservableObject {
         loadPinnedFolders()
         // Load custom terminal commands
         loadCustomCommands()
+        // Load quick notes
+        loadQuickNotes()
         // Load cached storage breakdown
         loadStorageBreakdown()
         // Check for mo/mole installation
@@ -564,6 +567,47 @@ class StorageViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Quick Notes Methods
+    
+    /// Adds a new quick note and persists it
+    func addQuickNote(title: String, content: String) {
+        guard !title.isEmpty, !content.isEmpty else { return }
+        let newNote = QuickNote(id: UUID(), title: title, content: content, dateCreated: Date())
+        self.quickNotes.append(newNote)
+        saveQuickNotes()
+    }
+    
+    /// Updates an existing quick note details and persists it
+    func updateQuickNote(id: UUID, title: String, content: String) {
+        guard !title.isEmpty, !content.isEmpty else { return }
+        if let idx = quickNotes.firstIndex(where: { $0.id == id }) {
+            quickNotes[idx].title = title
+            quickNotes[idx].content = content
+            saveQuickNotes()
+        }
+    }
+    
+    /// Removes a quick note by ID
+    func removeQuickNote(id: UUID) {
+        quickNotes.removeAll { $0.id == id }
+        saveQuickNotes()
+    }
+    
+    /// Save quick notes to UserDefaults
+    private func saveQuickNotes() {
+        if let encoded = try? JSONEncoder().encode(quickNotes) {
+            UserDefaults.standard.set(encoded, forKey: "QuickNotes")
+        }
+    }
+    
+    /// Load quick notes from UserDefaults
+    private func loadQuickNotes() {
+        if let data = UserDefaults.standard.data(forKey: "QuickNotes"),
+           let decoded = try? JSONDecoder().decode([QuickNote].self, from: data) {
+            self.quickNotes = decoded
+        }
+    }
+    
     /// Save storage breakdown cache to UserDefaults
     private func saveStorageBreakdown() {
         if let encoded = try? JSONEncoder().encode(storageBreakdown) {
@@ -588,4 +632,11 @@ struct TerminalCommand: Identifiable, Codable, Equatable {
     var command: String
     var folder: String?
     var tag: String?
+}
+
+struct QuickNote: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var content: String
+    var dateCreated: Date
 }

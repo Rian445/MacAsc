@@ -39,6 +39,11 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * Execute saved shell commands in a new Terminal window with a single click.
   * **Stop commands**: Safely terminate active commands individually (orange stop button displays only on actively executing rows) or run a global **Stop All** process interruption routine (sending Ctrl+C process group signals).
   * **Safety Deletion Confirmation**: Displays a secure confirmation dialog when deleting saved commands to prevent accidental loss.
+* **📝 Quick Notes**: A dedicated tab to save and copy text snippets, commands, or reminders:
+  * Add notes using a **collapsible creation form** with animated transitions.
+  * **Edit saved notes** inline to quickly correct or update text.
+  * **Copy notes instantly** with a dedicated copy button next to each note (features checkmark visual feedback).
+  * **Persistent Storage**: Saves your notes locally in macOS user preferences (`UserDefaults`) so they are available across launches.
 * **💾 Local Storage Cache**: Caches scanned storage categories locally. On launch, it loads previous statistics instantly, ensuring a fast load time without display lag.
 * **🔒 100% Offline & Secure**: Operates strictly offline. Has zero dependencies on network frameworks and is locked down via App Transport Security (ATS) to ensure your storage details never leave your device.
 

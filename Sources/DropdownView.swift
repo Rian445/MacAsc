@@ -19,6 +19,15 @@ struct DropdownView: View {
     
     @State private var editingCommand: TerminalCommand? = nil
     @State private var collapsedFolders: Set<String> = []
+    
+    // Quick Notes State
+    @State private var newNoteTitle = ""
+    @State private var newNoteContent = ""
+    @State private var isNoteFormExpanded = false
+    @State private var editingNote: QuickNote? = nil
+    @State private var noteToDelete: QuickNote? = nil
+    @State private var showNoteDeleteConfirmation = false
+    @State private var copiedNoteId: UUID? = nil
 
     
     var body: some View {
@@ -36,6 +45,9 @@ struct DropdownView: View {
                 }
                 TabButton(title: "Custom Commands", isSelected: currentTopTab == 1) {
                     currentTopTab = 1
+                }
+                TabButton(title: "Quick Note", isSelected: currentTopTab == 2) {
+                    currentTopTab = 2
                 }
             }
             .padding(3)
@@ -70,10 +82,20 @@ struct DropdownView: View {
                 .frame(maxHeight: .infinity)
                 .background(Color.black.opacity(0.001))
                 .contentShape(Rectangle())
-            } else {
+            } else if currentTopTab == 1 {
                 // Custom Terminal Commands View
                 ScrollView(.vertical, showsIndicators: false) {
                     customCommandsSection
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+                .frame(maxHeight: .infinity)
+                .background(Color.black.opacity(0.001))
+                .contentShape(Rectangle())
+            } else {
+                // Quick Notes View
+                ScrollView(.vertical, showsIndicators: false) {
+                    quickNotesSection
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                 }
@@ -112,6 +134,21 @@ struct DropdownView: View {
                 commandToDelete = nil
             }
         } message: { targetCmd in
+            Text("This action cannot be undone.")
+        }
+        .confirmationDialog(
+            "Are you sure you want to delete this note?",
+            isPresented: $showNoteDeleteConfirmation,
+            presenting: noteToDelete
+        ) { targetNote in
+            Button("Delete", role: .destructive) {
+                viewModel.removeQuickNote(id: targetNote.id)
+                noteToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                noteToDelete = nil
+            }
+        } message: { targetNote in
             Text("This action cannot be undone.")
         }
         .onAppear {
@@ -1294,6 +1331,228 @@ extension DropdownView {
             .help("Delete command")
         }
         .padding(8)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(8)
+    }
+    
+    // Quick Notes Section Builder
+    private var quickNotesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Add/Edit Note Form
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(editingNote == nil ? "Add Quick Note" : "Edit Quick Note")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            if isNoteFormExpanded {
+                                // Collapse and reset input
+                                editingNote = nil
+                                newNoteTitle = ""
+                                newNoteContent = ""
+                            }
+                            isNoteFormExpanded.toggle()
+                        }
+                    }) {
+                        Image(systemName: isNoteFormExpanded ? "minus.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                if isNoteFormExpanded {
+                    VStack(spacing: 8) {
+                        TextField("Title (e.g. Snippet, Reminder)", text: $newNoteTitle)
+                            .textFieldStyle(.plain)
+                            .padding(8)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                            .foregroundColor(.white)
+                            .font(.system(size: 12))
+                        
+                        TextField("Content / Text", text: $newNoteContent, axis: .vertical)
+                            .lineLimit(3...6)
+                            .textFieldStyle(.plain)
+                            .padding(8)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                            .foregroundColor(.white)
+                            .font(.system(size: 12))
+                    }
+                    .padding(.top, 4)
+                    
+                    HStack(spacing: 8) {
+                        if editingNote != nil {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    newNoteTitle = ""
+                                    newNoteContent = ""
+                                    editingNote = nil
+                                    isNoteFormExpanded = false
+                                }
+                            }) {
+                                Text("Cancel")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .padding(.vertical, 7)
+                                    .frame(maxWidth: .infinity)
+                                    .foregroundColor(.white)
+                                    .background(Color.white.opacity(0.12))
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        Button(action: {
+                            if let note = editingNote {
+                                viewModel.updateQuickNote(id: note.id, title: newNoteTitle, content: newNoteContent)
+                            } else {
+                                viewModel.addQuickNote(title: newNoteTitle, content: newNoteContent)
+                            }
+                            newNoteTitle = ""
+                            newNoteContent = ""
+                            editingNote = nil
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isNoteFormExpanded = false
+                            }
+                        }) {
+                            HStack {
+                                Spacer()
+                                Image(systemName: editingNote == nil ? "plus.circle.fill" : "checkmark.circle.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(editingNote == nil ? "Add Note" : "Save Changes")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                Spacer()
+                            }
+                            .padding(.vertical, 7)
+                            .frame(maxWidth: .infinity)
+                            .foregroundColor(.white)
+                            .background(newNoteTitle.isEmpty || newNoteContent.isEmpty ? Color.blue.opacity(0.3) : Color.blue)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(newNoteTitle.isEmpty || newNoteContent.isEmpty)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
+            
+            // Saved Notes List
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Saved Notes")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if viewModel.quickNotes.isEmpty {
+                    HStack {
+                        Spacer()
+                        Text("No notes saved yet. Add one above!")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 24)
+                        Spacer()
+                    }
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(10)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(viewModel.quickNotes) { note in
+                            noteRow(for: note)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Note Row Builder Helper
+    private func noteRow(for note: QuickNote) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(note.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Text(note.content)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 8) {
+                // Copy Content Button
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(note.content, forType: .string)
+                    withAnimation {
+                        copiedNoteId = note.id
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation {
+                            if copiedNoteId == note.id {
+                                copiedNoteId = nil
+                            }
+                        }
+                    }
+                }) {
+                    Image(systemName: copiedNoteId == note.id ? "checkmark.circle.fill" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundColor(copiedNoteId == note.id ? .green : .blue.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .help("Copy content to clipboard")
+                
+                // Edit Note Button
+                Button(action: {
+                    editingNote = note
+                    newNoteTitle = note.title
+                    newNoteContent = note.content
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isNoteFormExpanded = true
+                    }
+                }) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.blue.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Edit note")
+                
+                // Delete Note Button
+                Button(action: {
+                    noteToDelete = note
+                    showNoteDeleteConfirmation = true
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Delete note")
+            }
+        }
+        .padding(10)
         .background(Color.white.opacity(0.03))
         .cornerRadius(8)
     }
