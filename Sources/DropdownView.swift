@@ -153,6 +153,7 @@ struct DropdownView: View {
         }
         .onAppear {
             viewModel.startMonitoringRunningCommands()
+            viewModel.scanAppSelfSizes()
         }
         .onDisappear {
             viewModel.stopMonitoringRunningCommands()
@@ -306,6 +307,81 @@ extension DropdownView {
                                 .font(.system(size: 10))
                         }
                     }
+                }
+                
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("APPLICATION DISK FOOTPRINT")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("App Binary (.app)")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                            Text(viewModel.appBundleSize.formattedStorageSize())
+                                .font(.system(size: 9))
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                        }
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                        
+                        Text("USER DATA & CONFIG")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.top, 1)
+                        
+                        HStack {
+                            Text("General Settings & Cache:")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(viewModel.appGeneralSettingsSize.formattedStorageSize())
+                                .font(.system(size: 9))
+                                .foregroundColor(.white)
+                        }
+                        
+                        HStack {
+                            Text("Saved Commands:")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(viewModel.appCommandsSize.formattedStorageSize())
+                                .font(.system(size: 9))
+                                .foregroundColor(.white)
+                        }
+                        
+                        HStack {
+                            Text("Quick Notes:")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(viewModel.appNotesSize.formattedStorageSize())
+                                .font(.system(size: 9))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                        
+                        HStack {
+                            Text("Total Space:")
+                                .font(.system(size: 9))
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                            Text((viewModel.appBundleSize + viewModel.appSettingsSize).formattedStorageSize())
+                                .font(.system(size: 9))
+                                .fontWeight(.bold)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    .padding(6)
+                    .background(Color.white.opacity(0.03))
+                    .cornerRadius(6)
                 }
             }
             

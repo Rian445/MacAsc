@@ -17,6 +17,12 @@ class StorageViewModel: ObservableObject {
     @Published var customCommands: [TerminalCommand] = []
     @Published var runningCommandIds: Set<UUID> = []
     @Published var quickNotes: [QuickNote] = []
+    @Published var appBundleSize: Int64 = 0
+    @Published var appSettingsSize: Int64 = 0
+    @Published var appCommandsSize: Int64 = 0
+    @Published var appNotesSize: Int64 = 0
+    @Published var appGeneralSettingsSize: Int64 = 0
+    
     
     // MARK: - Dependencies & Listeners
     private let storageManager = StorageManager()
@@ -550,6 +556,66 @@ class StorageViewModel: ObservableObject {
     func stopMonitoringRunningCommands() {
         runningCommandsTimer?.cancel()
         runningCommandsTimer = nil
+    }
+    
+    /// Scans the size of the app itself and its local settings/plist storage
+    func scanAppSelfSizes() {
+        Task.detached(priority: .background) {
+            let fileManager = FileManager.default
+            
+            // 1. App Bundle Size (.app folder size)
+            let bundlePath = Bundle.main.bundlePath
+            let bundleURL = URL(fileURLWithPath: bundlePath)
+            var computedBundleSize: Int64 = 0
+            
+            let keys: [URLResourceKey] = [.fileSizeKey, .isRegularFileKey]
+            if let enumerator = fileManager.enumerator(
+                at: bundleURL,
+                includingPropertiesForKeys: keys,
+                options: []
+            ) {
+                while let fileURL = enumerator.nextObject() as? URL {
+                    if let values = try? fileURL.resourceValues(forKeys: Set(keys)),
+                       values.isRegularFile == true {
+                        computedBundleSize += Int64(values.fileSize ?? 0)
+                    }
+                }
+            }
+            
+            // 2. App Settings plist size (~/Library/Preferences/com.rian445.MacASC.plist)
+            let homeDir = fileManager.homeDirectoryForCurrentUser
+            let plistURL = homeDir.appendingPathComponent("Library/Preferences/com.rian445.MacASC.plist")
+            var computedSettingsSize: Int64 = 0
+            if let attributes = try? fileManager.attributesOfItem(atPath: plistURL.path),
+               let sizeVal = attributes[.size] as? Int64 {
+                computedSettingsSize = sizeVal
+            }
+            
+            // 3. User Data Breakdown from UserDefaults
+            let commandsData = UserDefaults.standard.data(forKey: "CustomCommands")
+            let computedCommandsSize = Int64(commandsData?.count ?? 0)
+            
+            let notesData = UserDefaults.standard.data(forKey: "QuickNotes")
+            let computedNotesSize = Int64(notesData?.count ?? 0)
+            
+            let computedGeneralSettingsSize = max(0, computedSettingsSize - computedCommandsSize - computedNotesSize)
+            
+            // Create immutable copies to capture safely in Sendable closure
+            let finalBundleSize = computedBundleSize
+            let finalSettingsSize = computedSettingsSize
+            let finalCommandsSize = computedCommandsSize
+            let finalNotesSize = computedNotesSize
+            let finalGeneralSettingsSize = computedGeneralSettingsSize
+            
+            // Post update back to the main thread
+            await MainActor.run {
+                self.appBundleSize = finalBundleSize
+                self.appSettingsSize = finalSettingsSize
+                self.appCommandsSize = finalCommandsSize
+                self.appNotesSize = finalNotesSize
+                self.appGeneralSettingsSize = finalGeneralSettingsSize
+            }
+        }
     }
     
     /// Save custom commands to UserDefaults
