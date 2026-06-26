@@ -1376,14 +1376,24 @@ extension DropdownView {
                             .foregroundColor(.white)
                             .font(.system(size: 12))
                         
-                        TextField("Content / Text", text: $newNoteContent, axis: .vertical)
-                            .lineLimit(3...6)
-                            .textFieldStyle(.plain)
-                            .padding(8)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(6)
-                            .foregroundColor(.white)
-                            .font(.system(size: 12))
+                        ZStack(alignment: .topLeading) {
+                            TextEditor(text: $newNoteContent)
+                                .font(.system(size: 12))
+                                .foregroundColor(.white)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                                .frame(height: 70)
+                            
+                            if newNoteContent.isEmpty {
+                                Text("Content / Text")
+                                    .foregroundColor(.white.opacity(0.35))
+                                    .font(.system(size: 12))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 7)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
                     .padding(.top, 4)
                     
