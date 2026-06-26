@@ -118,6 +118,7 @@ brew install --cask macasc
 
 ---
 
-## 📄 License
+## 📄 License & Privacy
 
-This project is open-source and available under the [MIT License](LICENSE).
+* **Privacy Policy**: This application operates strictly offline and collects no data. See the [Privacy Policy](PRIVACY.md) for more details.
+* **License**: This project is open-source and available under the [MIT License](LICENSE).
