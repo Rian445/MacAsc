@@ -4,7 +4,7 @@ Mac ASC is a premium, lightweight, and offline-locked macOS menu bar utility bui
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring absolute data privacy.
 
-### 📥 [Download Latest Release DMG](https://github.com/Rian445/MacAsc/releases/download/APP/Mac%20ASC.dmg)
+### 📥 [Download Latest Release DMG](https://github.com/Rian445/MacAsc/releases/download/APP/Mac_ASC.dmg)
 
 ---
 
@@ -63,7 +63,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 ### Installation
 
 #### Option 1: Direct Download (Recommended)
-1. Download the pre-compiled **[Mac ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/APP/Mac%20ASC.dmg)**.
+1. Download the pre-compiled **[Mac_ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/APP/Mac_ASC.dmg)**.
 2. Double-click the downloaded `.dmg` file to mount it.
 3. Drag **Mac ASC** into your **Applications** folder.
 

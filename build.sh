@@ -113,7 +113,7 @@ cp -R "Mac ASC.app" "$DMG_TEMP_DIR/"
 ln -sf /Applications "$DMG_TEMP_DIR/Applications"
 
 # Build DMG using hdiutil
-DMG_NAME="Mac ASC.dmg"
+DMG_NAME="Mac_ASC.dmg"
 rm -f "$DMG_NAME"
 hdiutil create -volname "Mac ASC" -srcfolder "$DMG_TEMP_DIR" -ov -format UDZO "$DMG_NAME"
 
