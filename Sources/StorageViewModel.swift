@@ -22,6 +22,15 @@ class StorageViewModel: ObservableObject {
     @Published var appCommandsSize: Int64 = 0
     @Published var appNotesSize: Int64 = 0
     @Published var appGeneralSettingsSize: Int64 = 0
+    @Published var chatThreads: [ChatThread] = []
+    @Published var selectedThreadId: UUID? = nil
+    @Published var isAiResponding = false
+    @Published var isOpencodeInstalled = false
+    private var activeAiProcess: Process? = nil
+    
+    var selectedThread: ChatThread? {
+        chatThreads.first(where: { $0.id == selectedThreadId })
+    }
     
     
     // MARK: - Dependencies & Listeners
@@ -42,6 +51,10 @@ class StorageViewModel: ObservableObject {
         loadStorageBreakdown()
         // Check for mo/mole installation
         checkMoleInstallation()
+        // Load AI chat history
+        loadChatHistory()
+        // Check for opencode installation
+        checkOpencodeInstallation()
         // Run initial scans
         refresh()
     }
@@ -55,6 +68,8 @@ class StorageViewModel: ObservableObject {
         
         // Check for mo/mole installation
         checkMoleInstallation()
+        // Check for opencode installation
+        checkOpencodeInstallation()
         
         // Scan pinned folder sizes in background
         scanPinnedFolderSizes()
@@ -688,6 +703,311 @@ class StorageViewModel: ObservableObject {
             self.storageBreakdown = decoded
         }
     }
+    
+    // MARK: - AI Chat Methods
+    
+    /// Checks if opencode is installed on the user's system
+    func checkOpencodeInstallation() {
+        self.isOpencodeInstalled = (getOpencodeBinaryPath() != nil)
+    }
+    
+    /// Finds the location of the opencode binary on the user's system
+    private func getOpencodeBinaryPath() -> String? {
+        let commonPaths = [
+            "/opt/homebrew/bin/opencode",
+            "/usr/local/bin/opencode"
+        ]
+        let fileManager = FileManager.default
+        for path in commonPaths {
+            if fileManager.fileExists(atPath: path) {
+                return path
+            }
+        }
+        return nil
+    }
+    
+    /// Loads the AI chat history and threads from UserDefaults
+    private func loadChatHistory() {
+        if let data = UserDefaults.standard.data(forKey: "AIChatThreads"),
+           let decoded = try? JSONDecoder().decode([ChatThread].self, from: data) {
+            self.chatThreads = decoded
+        }
+        if let idString = UserDefaults.standard.string(forKey: "AISelectedThreadId"),
+           let uuid = UUID(uuidString: idString) {
+            self.selectedThreadId = uuid
+        }
+        
+        // Clean up duplicate empty "New Chat" threads (keep at most one)
+        var seenEmpty = false
+        var cleanedThreads: [ChatThread] = []
+        for thread in chatThreads {
+            if thread.messages.isEmpty && thread.title == "New Chat" {
+                if !seenEmpty {
+                    cleanedThreads.append(thread)
+                    seenEmpty = true
+                }
+            } else {
+                cleanedThreads.append(thread)
+            }
+        }
+        self.chatThreads = cleanedThreads
+        
+        // Migrate old single chat messages if they exist
+        if chatThreads.isEmpty {
+            if let oldData = UserDefaults.standard.data(forKey: "AIChatHistory"),
+               let oldMessages = try? JSONDecoder().decode([ChatMessage].self, from: oldData) {
+                let oldSessionId = UserDefaults.standard.string(forKey: "AIActiveSessionId")
+                let migratedThread = ChatThread(
+                    id: UUID(),
+                    title: "Previous Chat",
+                    activeSessionId: oldSessionId,
+                    messages: oldMessages,
+                    dateCreated: Date()
+                )
+                self.chatThreads = [migratedThread]
+                self.selectedThreadId = migratedThread.id
+                // Remove old keys to avoid re-migration
+                UserDefaults.standard.removeObject(forKey: "AIChatHistory")
+                UserDefaults.standard.removeObject(forKey: "AIActiveSessionId")
+            } else {
+                createNewChatThread()
+            }
+        }
+        
+        // Ensure we have a valid selection
+        if selectedThreadId == nil || !chatThreads.contains(where: { $0.id == selectedThreadId }) {
+            selectedThreadId = chatThreads.first?.id
+        }
+    }
+    
+    /// Saves the AI chat threads and selected thread ID to UserDefaults
+    private func saveChatHistory() {
+        if let encoded = try? JSONEncoder().encode(chatThreads) {
+            UserDefaults.standard.set(encoded, forKey: "AIChatThreads")
+        }
+        if let selectedId = selectedThreadId {
+            UserDefaults.standard.set(selectedId.uuidString, forKey: "AISelectedThreadId")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AISelectedThreadId")
+        }
+    }
+    
+    /// Creates a new chat thread and selects it
+    func createNewChatThread() {
+        // If there is already an empty thread, select it instead of creating a duplicate
+        if let existingEmpty = chatThreads.first(where: { $0.messages.isEmpty && $0.title == "New Chat" }) {
+            self.selectedThreadId = existingEmpty.id
+            saveChatHistory()
+            return
+        }
+        
+        let newThread = ChatThread(
+            id: UUID(),
+            title: "New Chat",
+            activeSessionId: nil,
+            messages: [],
+            dateCreated: Date()
+        )
+        self.chatThreads.append(newThread)
+        self.selectedThreadId = newThread.id
+        saveChatHistory()
+    }
+    
+    /// Selects an existing chat thread
+    func selectChatThread(id: UUID) {
+        stopAiMessageQuery()
+        self.selectedThreadId = id
+        saveChatHistory()
+    }
+    
+    /// Deletes a chat thread by ID
+    func deleteChatThread(id: UUID) {
+        if selectedThreadId == id {
+            stopAiMessageQuery()
+        }
+        self.chatThreads.removeAll { $0.id == id }
+        if self.chatThreads.isEmpty {
+            createNewChatThread()
+        } else {
+            self.selectedThreadId = chatThreads.first?.id
+        }
+        saveChatHistory()
+    }
+    
+    /// Clears messages in the active chat thread and resets its session
+    func clearChatHistory() {
+        stopAiMessageQuery()
+        if let threadId = selectedThreadId,
+           let idx = chatThreads.firstIndex(where: { $0.id == threadId }) {
+            self.chatThreads[idx].messages.removeAll()
+            self.chatThreads[idx].activeSessionId = nil
+            self.chatThreads[idx].title = "New Chat"
+            saveChatHistory()
+        }
+    }
+    
+    /// Sends a query message to the AI (opencode binary) in the background
+    func sendChatMessage(_ text: String) {
+        guard !text.isEmpty, let threadId = selectedThreadId else { return }
+        
+        // Find current thread index
+        guard let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        
+        let userMessage = ChatMessage(id: UUID(), text: text, isUser: true, timestamp: Date())
+        self.chatThreads[idx].messages.append(userMessage)
+        
+        // Auto-rename thread title if it was default
+        if chatThreads[idx].title == "New Chat" {
+            let limit = 20
+            let cleanTitle = text.count > limit ? String(text.prefix(limit)) + "..." : text
+            chatThreads[idx].title = cleanTitle
+        }
+        
+        saveChatHistory()
+        self.isAiResponding = true
+        
+        Task.detached(priority: .userInitiated) {
+            guard let binaryPath = await self.getOpencodeBinaryPath() else {
+                await MainActor.run {
+                    if let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }) {
+                        let errorMessage = ChatMessage(
+                            id: UUID(),
+                            text: "Error: Could not find 'opencode' binary. Please verify that opencode is installed at /opt/homebrew/bin/opencode or /usr/local/bin/opencode.",
+                            isUser: false,
+                            timestamp: Date()
+                        )
+                        self.chatThreads[threadIdx].messages.append(errorMessage)
+                        self.isAiResponding = false
+                        self.saveChatHistory()
+                    }
+                }
+                return
+            }
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: binaryPath)
+            
+            // Set up arguments
+            var arguments = ["run", text, "--dir", "/tmp"]
+            
+            // Check if this thread has an active session ID to resume
+            let threadSessionId = await self.chatThreads.first(where: { $0.id == threadId })?.activeSessionId
+            if let sessionId = threadSessionId {
+                arguments.append("--session")
+                arguments.append(sessionId)
+            } else {
+                // First query in thread: request logs to scrape the newly generated session ID
+                arguments.append("--print-logs")
+            }
+            
+            process.arguments = arguments
+            
+            // Set input to null device so it runs headless and won't hang waiting for stdin
+            process.standardInput = FileHandle.nullDevice
+            
+            let outputPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = outputPipe
+            
+            await MainActor.run {
+                self.activeAiProcess = process
+            }
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+                
+                let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                let rawOutput = String(data: data, encoding: .utf8) ?? ""
+                let cleanedOutput = await self.cleanOpencodeOutput(rawOutput)
+                
+                await MainActor.run {
+                    // Check if this was the active process we expected (not cancelled)
+                    if self.activeAiProcess === process {
+                        if let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }) {
+                            // Extract session ID if we don't have one yet for this thread
+                            if self.chatThreads[threadIdx].activeSessionId == nil {
+                                if let sessionRange = rawOutput.range(of: "ses_[a-zA-Z0-9]+", options: .regularExpression) {
+                                    let matchedId = String(rawOutput[sessionRange])
+                                    self.chatThreads[threadIdx].activeSessionId = matchedId
+                                }
+                            }
+                            
+                            let aiMessage = ChatMessage(id: UUID(), text: cleanedOutput, isUser: false, timestamp: Date())
+                            self.chatThreads[threadIdx].messages.append(aiMessage)
+                            self.isAiResponding = false
+                            self.activeAiProcess = nil
+                            self.saveChatHistory()
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    if self.activeAiProcess === process {
+                        if let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }) {
+                            let errorMessage = ChatMessage(id: UUID(), text: "Error executing AI process: \(error.localizedDescription)", isUser: false, timestamp: Date())
+                            self.chatThreads[threadIdx].messages.append(errorMessage)
+                            self.isAiResponding = false
+                            self.activeAiProcess = nil
+                            self.saveChatHistory()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Interrupts/terminates the active opencode background process and clears port/process
+    func stopAiMessageQuery() {
+        if let process = activeAiProcess {
+            if process.isRunning {
+                process.terminate()
+            }
+            activeAiProcess = nil
+        }
+        if isAiResponding {
+            isAiResponding = false
+            // Add a notice that query was stopped by user to the selected thread
+            if let threadId = selectedThreadId,
+               let idx = chatThreads.firstIndex(where: { $0.id == threadId }) {
+                let stopMessage = ChatMessage(id: UUID(), text: "Query stopped by user.", isUser: false, timestamp: Date())
+                chatThreads[idx].messages.append(stopMessage)
+                saveChatHistory()
+            }
+        }
+    }
+    
+    /// Filters and cleans the TUI/progress output from opencode stdout
+    private func cleanOpencodeOutput(_ raw: String) -> String {
+        var cleaned = raw
+        
+        // 1. Strip ESC-prefixed ANSI sequences
+        if let escRegex = try? NSRegularExpression(pattern: "[\u{001B}\u{009B}][\\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]", options: []) {
+            let range = NSRange(cleaned.startIndex..., in: cleaned)
+            cleaned = escRegex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+        }
+        
+        // 2. Strip raw bracket style sequences (like "[0m", "[?25h" that lost their ESC character)
+        if let bracketRegex = try? NSRegularExpression(pattern: "\\[\\??[0-9;]*[a-zA-Z]", options: []) {
+            let range = NSRange(cleaned.startIndex..., in: cleaned)
+            cleaned = bracketRegex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
+        }
+        
+        // 3. Line by line cleaning (filter build logs and timestamp logs)
+        let lines = cleaned.components(separatedBy: .newlines)
+        var filteredLines: [String] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Skip build loader blocks and background log prints
+            if trimmed.hasPrefix("> build ·") || trimmed.hasPrefix("> build") || trimmed.hasPrefix("timestamp=") {
+                continue
+            }
+            filteredLines.append(line)
+        }
+        
+        let joined = filteredLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? "No output." : joined
+    }
 }
 
 // MARK: - Models
@@ -705,4 +1025,19 @@ struct QuickNote: Identifiable, Codable, Equatable {
     var title: String
     var content: String
     var dateCreated: Date
+}
+
+struct ChatMessage: Identifiable, Codable, Equatable {
+    let id: UUID
+    let text: String
+    let isUser: Bool
+    let timestamp: Date
+}
+
+struct ChatThread: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var activeSessionId: String?
+    var messages: [ChatMessage]
+    let dateCreated: Date
 }

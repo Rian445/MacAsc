@@ -28,6 +28,10 @@ struct DropdownView: View {
     @State private var noteToDelete: QuickNote? = nil
     @State private var showNoteDeleteConfirmation = false
     @State private var copiedNoteId: UUID? = nil
+    
+    // AI Chat State
+    @State private var tabPageIndex: Int = 0
+    @State private var chatInputText = ""
 
     
     var body: some View {
@@ -38,17 +42,68 @@ struct DropdownView: View {
             Divider()
                 .opacity(0.3)
             
-            // Top Tab Selector (segmented control)
-            HStack(spacing: 4) {
-                TabButton(title: "Disk Insight", isSelected: currentTopTab == 0) {
-                    currentTopTab = 0
+            // Top Tab Selector (segmented control with pagination slider)
+            HStack(spacing: 8) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        tabPageIndex = 0
+                        if currentTopTab > 1 {
+                            currentTopTab = 1
+                        }
+                    }
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(tabPageIndex == 1 ? .white : .secondary.opacity(0.3))
+                        .padding(5)
+                        .background(Color.white.opacity(tabPageIndex == 1 ? 0.08 : 0.02))
+                        .cornerRadius(6)
                 }
-                TabButton(title: "Custom Commands", isSelected: currentTopTab == 1) {
-                    currentTopTab = 1
+                .disabled(tabPageIndex == 0)
+                .buttonStyle(.plain)
+                
+                HStack(spacing: 4) {
+                    if tabPageIndex == 0 {
+                        TabButton(title: "Disk Insight", isSelected: currentTopTab == 0) {
+                            currentTopTab = 0
+                        }
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        
+                        TabButton(title: "Custom Commands", isSelected: currentTopTab == 1) {
+                            currentTopTab = 1
+                        }
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    } else {
+                        TabButton(title: "Quick Note", isSelected: currentTopTab == 2) {
+                            currentTopTab = 2
+                        }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        
+                        TabButton(title: "Chat with AI", isSelected: currentTopTab == 3) {
+                            currentTopTab = 3
+                        }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
-                TabButton(title: "Quick Note", isSelected: currentTopTab == 2) {
-                    currentTopTab = 2
+                .frame(maxWidth: .infinity)
+                
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        tabPageIndex = 1
+                        if currentTopTab < 2 {
+                            currentTopTab = 2
+                        }
+                    }
+                }) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(tabPageIndex == 0 ? .white : .secondary.opacity(0.3))
+                        .padding(5)
+                        .background(Color.white.opacity(tabPageIndex == 0 ? 0.08 : 0.02))
+                        .cornerRadius(6)
                 }
+                .disabled(tabPageIndex == 1)
+                .buttonStyle(.plain)
             }
             .padding(3)
             .background(Color.black.opacity(0.25))
@@ -92,7 +147,7 @@ struct DropdownView: View {
                 .frame(maxHeight: .infinity)
                 .background(Color.black.opacity(0.001))
                 .contentShape(Rectangle())
-            } else {
+            } else if currentTopTab == 2 {
                 // Quick Notes View
                 ScrollView(.vertical, showsIndicators: false) {
                     quickNotesSection
@@ -102,6 +157,12 @@ struct DropdownView: View {
                 .frame(maxHeight: .infinity)
                 .background(Color.black.opacity(0.001))
                 .contentShape(Rectangle())
+            } else {
+                // Chat with AI View (opencode TUI wrapper)
+                aiChatSection
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .frame(maxHeight: .infinity)
             }
             
             Divider()
@@ -1641,5 +1702,344 @@ extension DropdownView {
         .padding(10)
         .background(Color.white.opacity(0.03))
         .cornerRadius(8)
+    }
+    
+    // MARK: - AI Chat UI Section
+    
+    private var aiChatSection: some View {
+        VStack(spacing: 8) {
+            // Thread Selection Control
+            HStack {
+                Menu {
+                    ForEach(viewModel.chatThreads) { thread in
+                        Button(action: {
+                            viewModel.selectChatThread(id: thread.id)
+                        }) {
+                            HStack {
+                                Text(thread.title)
+                                if thread.id == viewModel.selectedThreadId {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                    if !viewModel.chatThreads.isEmpty {
+                        Divider()
+                    }
+                    Button(action: {
+                        viewModel.createNewChatThread()
+                    }) {
+                        Label("New Chat", systemImage: "plus")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .font(.system(size: 10))
+                        Text(viewModel.selectedThread?.title ?? "No Chat Selected")
+                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8))
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(6)
+                }
+                .menuStyle(.button)
+                
+                Spacer()
+                
+                // Delete Active Thread Button
+                if let selectedId = viewModel.selectedThreadId {
+                    Button(action: {
+                        viewModel.deleteChatThread(id: selectedId)
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 9))
+                            Text("Delete Chat")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        .foregroundColor(.red.opacity(0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete this chat thread")
+                }
+            }
+            .padding(.bottom, 4)
+            
+            let messages = viewModel.selectedThread?.messages ?? []
+            
+            // Chat history area
+            if messages.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "cpu.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.blue.opacity(0.8))
+                    Text("Chat with Local AI")
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                    Text("This interface runs your queries through the locally installed opencode TUI agent on your Mac in the background.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    
+                    if !viewModel.isOpencodeInstalled {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.yellow)
+                                    .font(.system(size: 10))
+                                Text("opencode not detected")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.yellow)
+                            }
+                            Text("To use this feature, please make sure you install opencode by running:")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.8))
+                            Text("brew install opencode")
+                                .font(.system(size: 9, design: .monospaced))
+                                .padding(4)
+                                .background(Color.black.opacity(0.3))
+                                .cornerRadius(4)
+                                .foregroundColor(.blue)
+                        }
+                        .padding(10)
+                        .background(Color.yellow.opacity(0.08))
+                        .cornerRadius(8)
+                        .padding(.top, 10)
+                    }
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                // Messages log
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(spacing: 10) {
+                            ForEach(messages) { msg in
+                                ChatBubble(message: msg) {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(msg.text, forType: .string)
+                                }
+                                .id(msg.id)
+                            }
+                            
+                            // Add a loading bubble if responding
+                            if viewModel.isAiResponding {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack(spacing: 4) {
+                                            DotLoadingView()
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(8)
+                                    }
+                                    Spacer()
+                                }
+                                .id("loading_bubble")
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .onChange(of: viewModel.selectedThread?.messages) { _ in
+                        scrollToBottom(proxy: proxy)
+                    }
+                    .onChange(of: viewModel.isAiResponding) { newValue in
+                        if newValue {
+                            scrollToBottom(proxy: proxy)
+                        }
+                    }
+                    .onAppear {
+                        scrollToBottom(proxy: proxy)
+                    }
+                }
+            }
+            
+            // Input Bar & Stop Control
+            HStack(spacing: 8) {
+                if viewModel.isAiResponding {
+                    // STOP AI Button
+                    Button(action: {
+                        viewModel.stopAiMessageQuery()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Stop AI")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.8))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Text("AI is processing query...")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    TextField("Ask AI (e.g. explain opencode)", text: $chatInputText, onCommit: {
+                        submitChatMessage()
+                    })
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(6)
+                    .foregroundColor(.white)
+                    .font(.system(size: 11.5))
+                    .disabled(!viewModel.isOpencodeInstalled)
+                    
+                    Button(action: {
+                        submitChatMessage()
+                    }) {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(viewModel.isOpencodeInstalled ? .blue : .secondary)
+                            .padding(7)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!viewModel.isOpencodeInstalled || chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                
+                // Clear button (always available, but disabled if responding)
+                if !messages.isEmpty && !viewModel.isAiResponding {
+                    Button(action: {
+                        viewModel.clearChatHistory()
+                    }) {
+                        Image(systemName: "clear")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange.opacity(0.8))
+                            .padding(7)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear active chat messages")
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+    
+    private func submitChatMessage() {
+        let trimmed = chatInputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        viewModel.sendChatMessage(trimmed)
+        
+        // Clear on the next run loop tick to override any focus resignation commits
+        DispatchQueue.main.async {
+            self.chatInputText = ""
+        }
+    }
+    
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.25)) {
+                if viewModel.isAiResponding {
+                    proxy.scrollTo("loading_bubble", anchor: .bottom)
+                } else if let last = viewModel.selectedThread?.messages.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Dot Loading View
+struct DotLoadingView: View {
+    @State private var isAnimating = false
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { index in
+                Circle()
+                    .fill(Color.secondary)
+                    .frame(width: 4, height: 4)
+                    .scaleEffect(isAnimating ? 1.0 : 0.4)
+                    .animation(
+                        Animation.easeInOut(duration: 0.6)
+                            .repeatForever()
+                            .delay(Double(index) * 0.2),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = true
+        }
+    }
+}
+
+// MARK: - Chat Bubble View
+struct ChatBubble: View {
+    let message: ChatMessage
+    let onCopy: () -> Void
+    @State private var showCopied = false
+    
+    var body: some View {
+        HStack {
+            if message.isUser {
+                Spacer(minLength: 40)
+            }
+            
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 3) {
+                Text(message.text)
+                    .font(.system(size: 11, design: message.isUser ? .default : .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(message.isUser ? Color.blue.opacity(0.65) : Color.white.opacity(0.08))
+                    .cornerRadius(8)
+                    .textSelection(.enabled)
+                
+                HStack(spacing: 6) {
+                    Text(formatTime(message.timestamp))
+                        .font(.system(size: 8))
+                        .foregroundColor(.secondary)
+                    
+                    Button(action: {
+                        onCopy()
+                        showCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showCopied = false
+                        }
+                    }) {
+                        Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 8))
+                            .foregroundColor(showCopied ? .green : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 4)
+            }
+            
+            if !message.isUser {
+                Spacer(minLength: 40)
+            }
+        }
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }

@@ -1,6 +1,6 @@
 # Mac ASC
 
-Mac ASC is a premium, lightweight, and offline-locked macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, and quick folder pinning with direct Finder navigation.
+Mac ASC is a premium, lightweight, and offline-locked macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, quick folder pinning with direct Finder navigation, custom shell script commands, quick note-taking, and a local AI assistant panel.
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring absolute data privacy.
 
@@ -21,6 +21,17 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 ## ✨ Key Features
 
 * **🪟 Premium Glassmorphic UI**: Uses AppKit's native backdrop-blur transparency (`NSVisualEffectView` layered with a 45% dark opacity tint) to create a stunning, wallpaper-bleeding menu bar dropdown that respects light and dark modes dynamically.
+* **↔️ Tab Paging Slider**: Rebuilds the segmented header into a horizontal sliding window that displays exactly two tabs at a time. Use spring-animated chevrons (`<` and `>`) to navigate between pages:
+  * **Page 0**: *Disk Insight* & *Custom Commands*
+  * **Page 1**: *Quick Note* & *Chat with AI*
+* **🤖 Chat with Local AI (opencode)**: A dedicated chat interface that communicates with your locally installed `opencode` command-line utility:
+  * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
+  * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
+  * **Context continuation**: Uses your local database session ID (scraped dynamically from log output) to continue specific conversation histories for follow-up questions.
+  * **Clean Output Filtering**: Automatically filters out shell TUI progress loaders (`> build · ...`) and logs (`timestamp=...`), presenting clean text results.
+  * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.
+  * **Stop AI Processing**: Cancel running queries mid-way, immediately terminating the background subprocess and releasing ports.
+  * **Dot Typing Indicator**: Features a pulsed three-dot typing loading view during background AI execution.
 * **📊 Categorized Storage Breakdown**: Visualizes your storage allocations using multi-colored stacked progress bars. Breaks down space into:
   * 🔵 **Applications**
   * 🟣 **Developer Files** (build directories, caches)
@@ -54,6 +65,7 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **Platform**: macOS 13.0+
 * **Language**: Swift 5.9+ (Swift 6 async-concurrency compliant)
 * **Frameworks**: SwiftUI & AppKit (MVVM Architecture)
+* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing local binaries (`opencode`, `mo`, `osascript`).
 * **Packaging**: Built into a standalone `.app` bundle and distributed via a compressed `.dmg` installer.
 
 ---
@@ -64,6 +76,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 
 ### Prerequisite
 * macOS 13+ with Xcode Command Line Tools installed (run `xcode-select --install` if you don't have it).
+* To use the AI Chat panel, install the `opencode` CLI utility (see instructions below).
 
 ### Installation
 
@@ -114,9 +127,9 @@ brew install --cask macasc
 
 * `Sources/`
   * `MacStorageUtilityApp.swift` — App entry point deploying the Status Bar Item and centered `NSPanel` controller.
-  * `StorageViewModel.swift` — Coordinates application state, mounts/unmounts, custom terminal commands, and directory size indexing.
+  * `StorageViewModel.swift` — Coordinates application state, mounts/unmounts, custom terminal commands, AI chat threads, and directory size indexing.
   * `StorageManager.swift` — Scans application sizes, traverses folder hierarchies asynchronously, and measures disk volumes.
-  * `DropdownView.swift` — The core user interface, segment rendering, custom commands pane, and dialog overlays.
+  * `DropdownView.swift` — The core user interface, sliding tab switcher, custom commands pane, quick notes, and local AI chat panel overlays.
   * `VisualEffectView.swift` — Bridges SwiftUI to AppKit for custom glassmorphism.
 * `app_icon.png` — High-resolution source icon.
 * `build.sh` — Compilation script compiling code and packing the DMG.

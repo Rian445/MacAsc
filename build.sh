@@ -99,6 +99,10 @@ EOF
 # Make sure binary is executable
 chmod +x "${MACOS_DIR}/Mac ASC"
 
+# Sign the app bundle with deep ad-hoc code signing for local execution security
+echo "Signing app bundle..."
+codesign --force --deep --sign - "Mac ASC.app"
+
 echo "=== Build Completed Successfully! ==="
 
 # Build Installer DMG
