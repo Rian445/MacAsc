@@ -28,6 +28,7 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
   * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
   * **Context continuation**: Uses your local database session ID (scraped dynamically from log output) to continue specific conversation histories for follow-up questions.
+  * **System Actions Toggle (Optional)**: A toggle represented by a shield icon (`green` for safe/blocked mode, `red` for active/bypass mode) that enables passing the `--dangerously-skip-permissions` flag. This allows the AI to auto-approve tool execution requests (such as creating folders, writing code files, or running command-line scripts) locally on your Mac.
   * **Clean Output Filtering**: Automatically filters out shell TUI progress loaders (`> build · ...`) and logs (`timestamp=...`), presenting clean text results.
   * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.
   * **Stop AI Processing**: Cancel running queries mid-way, immediately terminating the background subprocess and releasing ports.

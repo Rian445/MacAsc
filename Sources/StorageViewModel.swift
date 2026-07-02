@@ -26,6 +26,7 @@ class StorageViewModel: ObservableObject {
     @Published var selectedThreadId: UUID? = nil
     @Published var isAiResponding = false
     @Published var isOpencodeInstalled = false
+    @Published var allowAiSystemActions = false
     private var activeAiProcess: Process? = nil
     
     var selectedThread: ChatThread? {
@@ -737,6 +738,8 @@ class StorageViewModel: ObservableObject {
             self.selectedThreadId = uuid
         }
         
+        self.allowAiSystemActions = UserDefaults.standard.bool(forKey: "AIAllowSystemActions")
+        
         // Clean up duplicate empty "New Chat" threads (keep at most one)
         var seenEmpty = false
         var cleanedThreads: [ChatThread] = []
@@ -790,6 +793,7 @@ class StorageViewModel: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: "AISelectedThreadId")
         }
+        UserDefaults.standard.set(allowAiSystemActions, forKey: "AIAllowSystemActions")
     }
     
     /// Creates a new chat thread and selects it
@@ -889,6 +893,12 @@ class StorageViewModel: ObservableObject {
             
             // Set up arguments
             var arguments = ["run", text, "--dir", "/tmp"]
+            
+            // Auto-approve permissions if enabled by user
+            let allowActions = await self.allowAiSystemActions
+            if allowActions {
+                arguments.append("--dangerously-skip-permissions")
+            }
             
             // Check if this thread has an active session ID to resume
             let threadSessionId = await self.chatThreads.first(where: { $0.id == threadId })?.activeSessionId

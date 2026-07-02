@@ -15,6 +15,7 @@ All operations are executed entirely on your machine:
 ## 🤖 2. Local AI Chat Integration (opencode)
 * **Subprocess Execution**: The **Chat with AI** panel communicates with the locally installed `opencode` command-line tool. It spawns `opencode` as a background subprocess using your standard user account privileges.
 * **Local Session Storage**: Your chat threads, history, and generated responses are saved strictly on your local disk inside macOS user preferences (`UserDefaults`) under the key `AIChatThreads`. 
+* **System Actions Toggle (Optional)**: By default, the app blocks all system tools and file modification calls requested by the AI. If you choose to enable the **System Actions** toggle (red shield icon), the app runs the subprocess with the `--dangerously-skip-permissions` flag. This auto-approves local file writes and terminal commands, executing them strictly locally on your machine under your standard user permissions.
 * **Data Transmission**: Mac ASC itself does **not** have internet access and does **not** transmit or upload your prompts. Any networking required to generate AI responses (e.g. sending queries to DeepSeek or OpenAI) is handled entirely by your own locally installed and configured `opencode` utility, using your personal credentials stored on your Mac.
 
 ## 🌐 3. Zero Network Connectivity (ATS Block)

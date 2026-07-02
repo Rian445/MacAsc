@@ -1750,6 +1750,20 @@ extension DropdownView {
                 
                 Spacer()
                 
+                // Allow Actions Toggle
+                Toggle(isOn: $viewModel.allowAiSystemActions) {
+                    HStack(spacing: 3) {
+                        Image(systemName: viewModel.allowAiSystemActions ? "shield.slash.fill" : "shield.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(viewModel.allowAiSystemActions ? .red : .green)
+                        Text("System Actions")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .help("Auto-approve permissions for file writes and command executions (dangerous!)")
+                
                 // Delete Active Thread Button
                 if let selectedId = viewModel.selectedThreadId {
                     Button(action: {
