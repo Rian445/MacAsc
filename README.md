@@ -28,6 +28,9 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
   * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
   * **Context continuation**: Uses your local database session ID (scraped dynamically from log output) to continue specific conversation histories for follow-up questions.
+  * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Context Path: <path>`) into your next query, allowing the AI to inspect files or folder contexts.
+  * **Visual State Handoff**: The paperclip icon lights up in yellow (`paperclip.circle.fill`) when a file or directory is attached.
+  * **Terminal Handoff (Interactive Mode)**: Click the **Terminal** icon button to open a new macOS Terminal window running `opencode` with the active thread's session ID and context folder preloaded.
   * **System Actions Toggle (Optional)**: A toggle represented by a shield icon (`green` for safe/blocked mode, `red` for active/bypass mode) that enables passing the `--dangerously-skip-permissions` flag. This allows the AI to auto-approve tool execution requests (such as creating folders, writing code files, or running command-line scripts) locally on your Mac.
   * **Clean Output Filtering**: Automatically filters out shell TUI progress loaders (`> build · ...`) and logs (`timestamp=...`), presenting clean text results.
   * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.

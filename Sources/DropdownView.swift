@@ -32,6 +32,11 @@ struct DropdownView: View {
     // AI Chat State
     @State private var tabPageIndex: Int = 0
     @State private var chatInputText = ""
+    @State private var isDraggingFolderOver = false
+    
+    // Settings Navigation State
+    @State private var showSettings = false
+    @State private var settingsActiveTab = 0 // 0 = About, 1 = Tweak
 
     
     var body: some View {
@@ -42,127 +47,162 @@ struct DropdownView: View {
             Divider()
                 .opacity(0.3)
             
-            // Top Tab Selector (segmented control with pagination slider)
-            HStack(spacing: 8) {
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        tabPageIndex = 0
-                        if currentTopTab > 1 {
-                            currentTopTab = 1
-                        }
-                    }
-                }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(tabPageIndex == 1 ? .white : .secondary.opacity(0.3))
-                        .padding(5)
-                        .background(Color.white.opacity(tabPageIndex == 1 ? 0.08 : 0.02))
-                        .cornerRadius(6)
-                }
-                .disabled(tabPageIndex == 0)
-                .buttonStyle(.plain)
-                
-                HStack(spacing: 4) {
-                    if tabPageIndex == 0 {
-                        TabButton(title: "Disk Insight", isSelected: currentTopTab == 0) {
-                            currentTopTab = 0
-                        }
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                        
-                        TabButton(title: "Custom Commands", isSelected: currentTopTab == 1) {
-                            currentTopTab = 1
-                        }
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                    } else {
-                        TabButton(title: "Quick Note", isSelected: currentTopTab == 2) {
-                            currentTopTab = 2
-                        }
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        
-                        TabButton(title: "Chat with AI", isSelected: currentTopTab == 3) {
-                            currentTopTab = 3
-                        }
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        tabPageIndex = 1
-                        if currentTopTab < 2 {
-                            currentTopTab = 2
-                        }
-                    }
-                }) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(tabPageIndex == 0 ? .white : .secondary.opacity(0.3))
-                        .padding(5)
-                        .background(Color.white.opacity(tabPageIndex == 0 ? 0.08 : 0.02))
-                        .cornerRadius(6)
-                }
-                .disabled(tabPageIndex == 1)
-                .buttonStyle(.plain)
-            }
-            .padding(3)
-            .background(Color.black.opacity(0.25))
-            .cornerRadius(8)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 6)
-            
-            // Content based on selected tab
-            if currentTopTab == 0 {
-                // Scrollable Content - Disk Insight
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        // Internal Storage
-                        if let internalDrive = viewModel.internalDrive {
-                            internalStorageSection(for: internalDrive)
-                        }
-                        
-                        // External Storage
-                        externalStorageSection
-                        
-                        // Pinned Folders
-                        pinnedFoldersSection
-                        
-                        // Breakdown Switcher and Lists
-                        breakdownSection
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                }
-                .frame(maxHeight: .infinity)
-                .background(Color.black.opacity(0.001))
-                .contentShape(Rectangle())
-            } else if currentTopTab == 1 {
-                // Custom Terminal Commands View
-                ScrollView(.vertical, showsIndicators: false) {
-                    customCommandsSection
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                }
-                .frame(maxHeight: .infinity)
-                .background(Color.black.opacity(0.001))
-                .contentShape(Rectangle())
-            } else if currentTopTab == 2 {
-                // Quick Notes View
-                ScrollView(.vertical, showsIndicators: false) {
-                    quickNotesSection
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                }
-                .frame(maxHeight: .infinity)
-                .background(Color.black.opacity(0.001))
-                .contentShape(Rectangle())
+            if showSettings {
+                settingsView
             } else {
-                // Chat with AI View (opencode TUI wrapper)
-                aiChatSection
+                // Top Tab Selector (segmented control with pagination slider)
+                let enabledTabs = activeTabs
+                if !enabledTabs.isEmpty {
+                    HStack(spacing: 8) {
+                        if enabledTabs.count > 2 {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                    tabPageIndex = 0
+                                    // If the current active tab is in page 1, set it to the first active tab in page 0
+                                    if !enabledTabs.prefix(2).contains(where: { $0.id == currentTopTab }) {
+                                        currentTopTab = enabledTabs[0].id
+                                    }
+                                }
+                            }) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(tabPageIndex == 1 ? .white : .secondary.opacity(0.3))
+                                    .padding(5)
+                                    .background(Color.white.opacity(tabPageIndex == 1 ? 0.08 : 0.02))
+                                    .cornerRadius(6)
+                            }
+                            .disabled(tabPageIndex == 0)
+                            .buttonStyle(.plain)
+                        }
+                        
+                        HStack(spacing: 4) {
+                            if enabledTabs.count > 2 {
+                                if tabPageIndex == 0 {
+                                    ForEach(Array(enabledTabs.prefix(2))) { tab in
+                                        TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
+                                            currentTopTab = tab.id
+                                        }
+                                        .transition(.move(edge: .leading).combined(with: .opacity))
+                                    }
+                                } else {
+                                    ForEach(Array(enabledTabs.suffix(from: 2))) { tab in
+                                        TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
+                                            currentTopTab = tab.id
+                                        }
+                                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    }
+                                }
+                            } else {
+                                // If 2 or fewer tabs, just show them in a simple row
+                                ForEach(enabledTabs) { tab in
+                                    TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
+                                        currentTopTab = tab.id
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        if enabledTabs.count > 2 {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                    tabPageIndex = 1
+                                    // If the current active tab is in page 0, set it to the first active tab in page 1
+                                    if !enabledTabs.suffix(from: 2).contains(where: { $0.id == currentTopTab }) {
+                                        currentTopTab = enabledTabs[2].id
+                                    }
+                                }
+                            }) {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(tabPageIndex == 0 ? .white : .secondary.opacity(0.3))
+                                    .padding(5)
+                                    .background(Color.white.opacity(tabPageIndex == 0 ? 0.08 : 0.02))
+                                    .cornerRadius(6)
+                            }
+                            .disabled(tabPageIndex == 1)
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(3)
+                    .background(Color.black.opacity(0.25))
+                    .cornerRadius(8)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.top, 12)
+                    .padding(.bottom, 6)
+                }
+                
+                // Content based on selected tab
+                let tabToRender = safeTopTab
+                if tabToRender == 0 {
+                    // Scrollable Content - Disk Insight
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            // Internal Storage
+                            if let internalDrive = viewModel.internalDrive {
+                                internalStorageSection(for: internalDrive)
+                            }
+                            
+                            // External Storage
+                            externalStorageSection
+                            
+                            // Pinned Folders
+                            pinnedFoldersSection
+                            
+                            // Breakdown Switcher and Lists
+                            breakdownSection
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
                     .frame(maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
+                } else if tabToRender == 1 {
+                    // Custom Terminal Commands View
+                    ScrollView(.vertical, showsIndicators: false) {
+                        customCommandsSection
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
+                } else if tabToRender == 2 {
+                    // Quick Notes View
+                    ScrollView(.vertical, showsIndicators: false) {
+                        quickNotesSection
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
+                } else if tabToRender == 3 {
+                    // Chat with AI View (opencode TUI wrapper)
+                    aiChatSection
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .frame(maxHeight: .infinity)
+                } else {
+                    // Fallback empty view if all tabs disabled
+                    VStack(spacing: 12) {
+                        Spacer()
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 32))
+                            .foregroundColor(.secondary)
+                        Text("All Tabs Hidden")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                        Text("Enable dashboard components in settings to view them.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                        Spacer()
+                    }
+                    .frame(maxHeight: .infinity)
+                }
             }
             
             Divider()
@@ -220,6 +260,139 @@ struct DropdownView: View {
             viewModel.stopMonitoringRunningCommands()
         }
     }
+    
+    // MARK: - Dynamic Navigation & Tweak Settings Helpers
+    
+    struct AppTab: Identifiable, Equatable {
+        let id: Int
+        let title: String
+    }
+    
+    var activeTabs: [AppTab] {
+        var tabs: [AppTab] = []
+        if viewModel.enableDiskInsight {
+            tabs.append(AppTab(id: 0, title: "Disk Insight"))
+        }
+        if viewModel.enableCustomCommands {
+            tabs.append(AppTab(id: 1, title: "Custom Commands"))
+        }
+        if viewModel.enableQuickNotes {
+            tabs.append(AppTab(id: 2, title: "Quick Note"))
+        }
+        if viewModel.enableAiChat {
+            tabs.append(AppTab(id: 3, title: "Chat with AI"))
+        }
+        return tabs
+    }
+    
+    var safeTopTab: Int {
+        let enabled = activeTabs
+        if enabled.contains(where: { $0.id == currentTopTab }) {
+            return currentTopTab
+        }
+        return enabled.first?.id ?? 0
+    }
+    
+    private func tweakToggleRow(title: String, icon: String, color: Color, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.system(size: 11))
+                .frame(width: 16)
+            
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+            
+            Spacer()
+            
+            Toggle("", isOn: isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .scaleEffect(0.7)
+                .frame(width: 28, height: 16)
+        }
+    }
+    
+    private var settingsView: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $settingsActiveTab) {
+                Text("About").tag(0)
+                Text("Tweak").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+            
+            Divider()
+                .opacity(0.15)
+            
+            if settingsActiveTab == 0 {
+                ScrollView(.vertical, showsIndicators: true) {
+                    aboutMePanel
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("DASHBOARD TWEAKS")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
+                        
+                        Text("Choose which components are displayed on the home dashboard screen:")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 4)
+                        
+                        VStack(spacing: 10) {
+                            tweakToggleRow(title: "Disk Insight", icon: "chart.pie.fill", color: .blue, isOn: Binding(
+                                get: { viewModel.enableDiskInsight },
+                                set: { viewModel.setTweak("TweakDiskInsight", value: $0) }
+                            ))
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                            
+                            tweakToggleRow(title: "Custom Commands", icon: "terminal.fill", color: .purple, isOn: Binding(
+                                get: { viewModel.enableCustomCommands },
+                                set: { viewModel.setTweak("TweakCustomCommands", value: $0) }
+                            ))
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                            
+                            tweakToggleRow(title: "Quick Note", icon: "note.text", color: .orange, isOn: Binding(
+                                get: { viewModel.enableQuickNotes },
+                                set: { viewModel.setTweak("TweakQuickNote", value: $0) }
+                            ))
+                            
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                            
+                            tweakToggleRow(title: "Chat with AI", icon: "cpu.fill", color: .green, isOn: Binding(
+                                get: { viewModel.enableAiChat },
+                                set: { viewModel.setTweak("TweakChatWithAi", value: $0) }
+                            ))
+                        }
+                        .padding(10)
+                        .background(Color.white.opacity(0.03))
+                        .cornerRadius(8)
+                        
+                        Text("Disabled features are hidden immediately from navigation tab bar.")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.35))
+                            .padding(.top, 6)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
 }
 
 // MARK: - Subviews
@@ -229,19 +402,32 @@ extension DropdownView {
     // Header
     private var headerView: some View {
         ZStack {
-            // Left-aligned actions (Info button)
+            // Left-aligned actions (Settings / Back button)
             HStack {
-                Button(action: {
-                    showAboutPopover.toggle()
-                }) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("About Mac ASC")
-                .popover(isPresented: $showAboutPopover, arrowEdge: .bottom) {
-                    aboutMePanel
+                if showSettings {
+                    Button(action: {
+                        showSettings = false
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.left")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Back")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Back to Main Dashboard")
+                } else {
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Settings")
                 }
                 
                 Spacer()
@@ -1750,39 +1936,90 @@ extension DropdownView {
                 
                 Spacer()
                 
-                // Allow Actions Toggle
-                Toggle(isOn: $viewModel.allowAiSystemActions) {
-                    HStack(spacing: 3) {
-                        Image(systemName: viewModel.allowAiSystemActions ? "shield.slash.fill" : "shield.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(viewModel.allowAiSystemActions ? .red : .green)
-                        Text("System Actions")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                }
-                .toggleStyle(.checkbox)
-                .help("Auto-approve permissions for file writes and command executions (dangerous!)")
-                
-                // Delete Active Thread Button
-                if let selectedId = viewModel.selectedThreadId {
-                    Button(action: {
-                        viewModel.deleteChatThread(id: selectedId)
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 9))
-                            Text("Delete Chat")
-                                .font(.system(size: 9, weight: .semibold))
+                HStack(spacing: 6) {
+                    // Attachment Icon Button (Paperclip)
+                    let hasAttachment = viewModel.selectedThread?.attachedDirectory != nil
+                    HStack(spacing: 0) {
+                        Button(action: {
+                            viewModel.selectDirectoryForActiveThread()
+                        }) {
+                            Image(systemName: hasAttachment ? "paperclip.circle.fill" : "paperclip")
+                                .font(.system(size: 10))
+                                .foregroundColor(hasAttachment ? .yellow : .blue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 6)
                         }
-                        .foregroundColor(.red.opacity(0.8))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                        .help(hasAttachment ? "AI Context: \(viewModel.selectedThread?.attachedDirectory ?? "") (Click to change)" : "Attach file/folder context for AI")
+                        
+                        if hasAttachment {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.12))
+                                .frame(width: 1, height: 12)
+                            
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    viewModel.detachDirectoryFromActiveThread()
+                                }
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.red.opacity(0.85))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove attached AI context")
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(6)
+                    
+                    // System Actions Toggle Button
+                    Button(action: {
+                        viewModel.allowAiSystemActions.toggle()
+                        UserDefaults.standard.set(viewModel.allowAiSystemActions, forKey: "AIAllowSystemActions")
+                    }) {
+                        Image(systemName: viewModel.allowAiSystemActions ? "shield.slash.fill" : "shield.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(viewModel.allowAiSystemActions ? .red : .green)
+                            .padding(6)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
-                    .help("Delete this chat thread")
+                    .help(viewModel.allowAiSystemActions ? "System Actions: Allowed (Dangerous)" : "System Actions: Blocked (Safe)")
+                    
+                    // Open in Terminal Button
+                    Button(action: {
+                        viewModel.openActiveThreadInTerminal()
+                    }) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 10))
+                            .foregroundColor(.blue)
+                            .padding(6)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Continue this chat session interactively in macOS Terminal")
+                    
+                    // Delete Active Thread Button
+                    if let selectedId = viewModel.selectedThreadId {
+                        Button(action: {
+                            viewModel.deleteChatThread(id: selectedId)
+                        }) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10))
+                                .foregroundColor(.red.opacity(0.8))
+                                .padding(6)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete this chat thread")
+                    }
                 }
             }
             .padding(.bottom, 4)
@@ -1950,6 +2187,40 @@ extension DropdownView {
             }
             .padding(.top, 4)
         }
+        .onDrop(of: ["public.file-url"], isTargeted: $isDraggingFolderOver) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                if let url = url {
+                    DispatchQueue.main.async {
+                        viewModel.attachDirectoryToActiveThread(url.path)
+                    }
+                }
+            }
+            return true
+        }
+        .overlay(
+            Group {
+                if isDraggingFolderOver {
+                    ZStack {
+                        Color.blue.opacity(0.12)
+                        
+                        VStack(spacing: 8) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 28))
+                                .foregroundColor(.blue)
+                            Text("Drop folder to attach context")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(20)
+                        .background(Color.black.opacity(0.85))
+                        .cornerRadius(12)
+                    }
+                    .transition(.opacity)
+                }
+            }
+        )
+        .animation(.easeInOut, value: isDraggingFolderOver)
     }
     
     private func submitChatMessage() {

@@ -27,6 +27,10 @@ class StorageViewModel: ObservableObject {
     @Published var isAiResponding = false
     @Published var isOpencodeInstalled = false
     @Published var allowAiSystemActions = false
+    @Published var enableDiskInsight = true
+    @Published var enableCustomCommands = true
+    @Published var enableQuickNotes = true
+    @Published var enableAiChat = true
     private var activeAiProcess: Process? = nil
     
     var selectedThread: ChatThread? {
@@ -40,6 +44,8 @@ class StorageViewModel: ObservableObject {
     private var runningCommandsTimer: AnyCancellable? = nil
     
     init() {
+        // Load tweak settings
+        loadTweakSettings()
         // Listen to macOS notifications for physical volume changes
         setupVolumeMonitor()
         // Load custom pinned folders
@@ -58,6 +64,20 @@ class StorageViewModel: ObservableObject {
         checkOpencodeInstallation()
         // Run initial scans
         refresh()
+    }
+    
+    /// Loads the Tweak settings for enabling/disabling dashboard tabs
+    private func loadTweakSettings() {
+        self.enableDiskInsight = UserDefaults.standard.object(forKey: "TweakDiskInsight") as? Bool ?? true
+        self.enableCustomCommands = UserDefaults.standard.object(forKey: "TweakCustomCommands") as? Bool ?? true
+        self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
+        self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
+    }
+    
+    /// Persists a Tweak setting toggle and reloads preferences
+    func setTweak(_ key: String, value: Bool) {
+        UserDefaults.standard.set(value, forKey: key)
+        loadTweakSettings()
     }
     
     // MARK: - Intent Methods
@@ -764,6 +784,7 @@ class StorageViewModel: ObservableObject {
                     id: UUID(),
                     title: "Previous Chat",
                     activeSessionId: oldSessionId,
+                    attachedDirectory: nil,
                     messages: oldMessages,
                     dateCreated: Date()
                 )
@@ -809,6 +830,7 @@ class StorageViewModel: ObservableObject {
             id: UUID(),
             title: "New Chat",
             activeSessionId: nil,
+            attachedDirectory: nil,
             messages: [],
             dateCreated: Date()
         )
@@ -891,8 +913,14 @@ class StorageViewModel: ObservableObject {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: binaryPath)
             
-            // Set up arguments
-            var arguments = ["run", text, "--dir", "/tmp"]
+            // Prepend context info to query if attached to thread
+            var textToSend = text
+            let attachedDir = await self.chatThreads.first(where: { $0.id == threadId })?.attachedDirectory
+            if let path = attachedDir {
+                textToSend = "Context Path: \(path)\n\n\(text)"
+            }
+            
+            var arguments = ["run", textToSend, "--dir", "/tmp"]
             
             // Auto-approve permissions if enabled by user
             let allowActions = await self.allowAiSystemActions
@@ -963,6 +991,89 @@ class StorageViewModel: ObservableObject {
                         }
                     }
                 }
+            }
+        }
+    }
+    
+    /// Launches macOS Terminal and resumes the active thread's session ID in an interactive session
+    func openActiveThreadInTerminal() {
+        guard let binaryPath = getOpencodeBinaryPath() else { return }
+        
+        var sessionArg = ""
+        if let threadId = selectedThreadId,
+           let thread = chatThreads.first(where: { $0.id == threadId }),
+           let sessionId = thread.activeSessionId {
+            sessionArg = " --session \(sessionId)"
+        }
+        
+        var dirArg = ""
+        if let threadId = selectedThreadId,
+           let thread = chatThreads.first(where: { $0.id == threadId }),
+           let path = thread.attachedDirectory {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                dirArg = " \"\(path)\""
+            } else {
+                let parentFolder = URL(fileURLWithPath: path).deletingLastPathComponent().path
+                dirArg = " \"\(parentFolder)\""
+            }
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("resume_opencode_session.command")
+        
+        let scriptContent = """
+        #!/bin/bash
+        clear
+        echo "=== Resuming Mac ASC AI Session in Terminal ==="
+        echo "Session ID: \(sessionArg.isEmpty ? "New Session" : sessionArg)"
+        echo "Attached Dir: \(dirArg.isEmpty ? "None" : dirArg)"
+        echo "================================================="
+        "\(binaryPath)"\(dirArg)\(sessionArg)
+        exec $SHELL
+        """
+        
+        do {
+            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            
+            // Set POSIX execution permissions (chmod +x)
+            let attributes = [FileAttributeKey.posixPermissions: NSNumber(value: 0o755)]
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: fileURL.path)
+            
+            // Open the .command file with NSWorkspace to launch it in Terminal
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            NSLog("Failed to launch opencode in Terminal: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Associates a file or directory path with the active chat thread
+    func attachDirectoryToActiveThread(_ path: String) {
+        guard let threadId = selectedThreadId,
+              let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        self.chatThreads[idx].attachedDirectory = path
+        saveChatHistory()
+    }
+    
+    /// Clears the associated directory path from the active chat thread
+    func detachDirectoryFromActiveThread() {
+        guard let threadId = selectedThreadId,
+              let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        self.chatThreads[idx].attachedDirectory = nil
+        saveChatHistory()
+    }
+    
+    /// Triggers standard picker panel to attach a file or directory manually
+    func selectDirectoryForActiveThread() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Select File or Folder for AI Context"
+        openPanel.canChooseDirectories = true
+        openPanel.canChooseFiles = true
+        openPanel.allowsMultipleSelection = false
+        
+        if openPanel.runModal() == .OK {
+            if let url = openPanel.url {
+                attachDirectoryToActiveThread(url.path)
             }
         }
     }
@@ -1048,6 +1159,7 @@ struct ChatThread: Identifiable, Codable, Equatable {
     let id: UUID
     var title: String
     var activeSessionId: String?
+    var attachedDirectory: String?
     var messages: [ChatMessage]
     let dateCreated: Date
 }
