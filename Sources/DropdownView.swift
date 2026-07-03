@@ -385,6 +385,57 @@ struct DropdownView: View {
                             .font(.system(size: 9))
                             .foregroundColor(.white.opacity(0.35))
                             .padding(.top, 6)
+                        
+                        Divider()
+                            .opacity(0.12)
+                            .padding(.vertical, 4)
+                        
+                        Text("BACKUP & RESTORE")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.secondary)
+                        
+                        Text("Export your customized commands, quick notes, pinned folders, and AI chat sessions, or import a previously saved backup file:")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                            .padding(.bottom, 4)
+                        
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                viewModel.backupUserSettings()
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "arrow.down.doc.fill")
+                                    Text("Export Backup...")
+                                }
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.blue)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button(action: {
+                                viewModel.restoreUserSettings()
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "arrow.up.doc.fill")
+                                    Text("Import Backup...")
+                                }
+                                .font(.system(size: 10.5, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)

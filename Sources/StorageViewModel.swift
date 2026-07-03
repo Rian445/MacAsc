@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AppKit
+import UniformTypeIdentifiers
 
 @MainActor
 class StorageViewModel: ObservableObject {
@@ -1128,6 +1129,103 @@ class StorageViewModel: ObservableObject {
         
         let joined = filteredLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return joined.isEmpty ? "No output." : joined
+    }
+    
+    // MARK: - Settings Backup & Restore Utility
+    
+    private let backupKeys = [
+        "TweakDiskInsight",
+        "TweakCustomCommands",
+        "TweakQuickNote",
+        "TweakChatWithAi",
+        "PinnedFolders",
+        "CustomCommands",
+        "QuickNotes",
+        "AIChatThreads",
+        "AISelectedThreadId",
+        "AIAllowSystemActions",
+        "CachedStorageBreakdown"
+    ]
+    
+    /// Exports all user settings, pinned folders, commands, notes, tweaks, and AI history to a JSON file
+    func backupUserSettings() {
+        var exportDict: [String: String] = [:]
+        
+        for key in backupKeys {
+            if let data = UserDefaults.standard.data(forKey: key) {
+                exportDict[key] = data.base64EncodedString()
+            } else if let stringVal = UserDefaults.standard.string(forKey: key) {
+                if let strData = stringVal.data(using: .utf8) {
+                    exportDict[key] = "STR:" + strData.base64EncodedString()
+                }
+            } else if let boolVal = UserDefaults.standard.object(forKey: key) as? Bool {
+                exportDict[key] = "BOOL:" + (boolVal ? "true" : "false")
+            }
+        }
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export Settings Backup"
+        savePanel.allowedContentTypes = [UTType.json]
+        savePanel.nameFieldStringValue = "macasc_backup.json"
+        
+        if savePanel.runModal() == .OK, let url = savePanel.url {
+            do {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted
+                let jsonData = try encoder.encode(exportDict)
+                try jsonData.write(to: url)
+            } catch {
+                NSLog("Failed to write settings backup: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// Imports a JSON settings backup file, decoding and updating Preferences and UI state
+    func restoreUserSettings() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Import Settings Backup"
+        openPanel.allowedContentTypes = [UTType.json]
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+        
+        if openPanel.runModal() == .OK, let url = openPanel.url {
+            do {
+                let data = try Data(contentsOf: url)
+                let decoder = JSONDecoder()
+                let importDict = try decoder.decode([String: String].self, from: data)
+                
+                for (key, val) in importDict {
+                    if val.hasPrefix("BOOL:") {
+                        let boolStr = String(val.dropFirst(5))
+                        UserDefaults.standard.set(boolStr == "true", forKey: key)
+                    } else if val.hasPrefix("STR:") {
+                        let base64Str = String(val.dropFirst(4))
+                        if let decodedData = Data(base64Encoded: base64Str),
+                           let strVal = String(data: decodedData, encoding: .utf8) {
+                            UserDefaults.standard.set(strVal, forKey: key)
+                        }
+                    } else {
+                        if let decodedData = Data(base64Encoded: val) {
+                            UserDefaults.standard.set(decodedData, forKey: key)
+                        }
+                    }
+                }
+                
+                // Reload preferences and cache into memory
+                loadTweakSettings()
+                loadPinnedFolders()
+                loadCustomCommands()
+                loadQuickNotes()
+                loadChatHistory()
+                
+                // Signal UI refresh
+                self.objectWillChange.send()
+                
+            } catch {
+                NSLog("Failed to restore settings backup: \(error.localizedDescription)")
+            }
+        }
     }
 }
 

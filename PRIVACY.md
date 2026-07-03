@@ -10,6 +10,7 @@ Last Updated: July 2, 2026
 All operations are executed entirely on your machine:
 * **Storage Breakdown Analysis**: The directory size calculation is handled locally using native macOS system calls (`FileManager`).
 * **Pinned Folders & Notes**: Paths to folders you pin and quick notes you write are saved locally in the standard macOS user preferences (`UserDefaults`) and never shared.
+* **Settings Backup**: When exporting settings backups, the app encodes your commands, notes, pins, and AI history into a local JSON file of your choosing. No third-party servers or telemetry are involved in the backup process.
 * **Custom Terminal Commands**: Your shell shortcuts are stored locally on your device's preferences and executed using standard macOS command processes.
 
 ## 🤖 2. Local AI Chat Integration (opencode)

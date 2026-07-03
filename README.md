@@ -59,6 +59,10 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * **Edit saved notes** inline to quickly correct or update text.
   * **Copy notes instantly** with a dedicated copy button next to each note (features checkmark visual feedback).
   * **Persistent Storage**: Saves your notes locally in macOS user preferences (`UserDefaults`) so they are available across launches.
+* **⚙️ Main Window Settings & Tweaks**: A new Settings icon button in the header opens preferences directly in the main window:
+  * **About Page**: Lists developed details, ATS security specifications, and exact disk usage/preference sizes for the application.
+  * **Dashboard Tweaks**: Toggle switches to show or hide dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) dynamically.
+  * **Backup & Restore**: Export all custom commands, quick notes, pinned folders, tweaks, and AI chat sessions into a JSON backup file, or upload/import a backup file to restore your configuration instantly.
 * **💾 Local Storage Cache**: Caches scanned storage categories locally. On launch, it loads previous statistics instantly, ensuring a fast load time without display lag.
 * **🔒 100% Offline & Secure**: Operates strictly offline. Has zero dependencies on network frameworks and is locked down via App Transport Security (ATS) to ensure your storage details never leave your device.
 
