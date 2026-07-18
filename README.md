@@ -11,9 +11,7 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 ## 📸 Interface Previews
 
 <p align="center">
-  <img src="Screenshots/Screenshot%202026-06-26%20at%2012.56.03%E2%80%AFPM.png" width="360" alt="Mac ASC Tab Preview"/>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="Screenshots/Screenshot%202026-06-26%20at%2012.56.31%E2%80%AFPM.png" width="360" alt="Custom Commands Tab Preview"/>
+  <img src="Screenshots/macasc.png" width="480" alt="Mac ASC Interface Preview"/>
 </p>
 
 ---
