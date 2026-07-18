@@ -32,6 +32,9 @@ class StorageViewModel: ObservableObject {
     @Published var enableCustomCommands = true
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
+    @Published var availableModels: [String] = []
+    @Published var selectedModel: String = ""
+    @Published var favoriteModels: [String] = []
     private var activeAiProcess: Process? = nil
     
     var selectedThread: ChatThread? {
@@ -47,6 +50,8 @@ class StorageViewModel: ObservableObject {
     init() {
         // Load tweak settings
         loadTweakSettings()
+        // Load selected AI model
+        loadSelectedModel()
         // Listen to macOS notifications for physical volume changes
         setupVolumeMonitor()
         // Load custom pinned folders
@@ -73,6 +78,75 @@ class StorageViewModel: ObservableObject {
         self.enableCustomCommands = UserDefaults.standard.object(forKey: "TweakCustomCommands") as? Bool ?? true
         self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
         self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
+    }
+
+    /// Loads the selected AI model and starts loading all available models
+    private func loadSelectedModel() {
+        self.selectedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
+        self.favoriteModels = UserDefaults.standard.stringArray(forKey: "AIFavoriteModels") ?? []
+        
+        // Pre-populate default favorite models if empty
+        if self.favoriteModels.isEmpty {
+            self.favoriteModels = [
+                "opencode/deepseek-v4-flash-free",
+                "google/gemini-3.5-flash"
+            ]
+            UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
+        }
+        
+        loadAvailableModels()
+    }
+    
+    /// Toggles a model inside the favorites list
+    func toggleFavorite(_ model: String) {
+        if favoriteModels.contains(model) {
+            favoriteModels.removeAll { $0 == model }
+        } else {
+            favoriteModels.append(model)
+        }
+        UserDefaults.standard.set(favoriteModels, forKey: "AIFavoriteModels")
+    }
+
+    /// Queries the opencode CLI in the background to list all available models
+    func loadAvailableModels() {
+        guard let binaryPath = getOpencodeBinaryPath() else { return }
+        Task {
+            let models = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .background).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: binaryPath)
+                    process.arguments = ["models"]
+                    
+                    let pipe = Pipe()
+                    process.standardOutput = pipe
+                    process.standardError = FileHandle.nullDevice
+                    
+                    do {
+                        try process.run()
+                        process.waitUntilExit()
+                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                        if let output = String(data: data, encoding: .utf8) {
+                            let lines = output.components(separatedBy: .newlines)
+                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty && !$0.contains(" ") && $0.contains("/") }
+                            continuation.resume(returning: lines)
+                            return
+                        }
+                    } catch {
+                        NSLog("Failed to load models: \(error.localizedDescription)")
+                    }
+                    continuation.resume(returning: [String]())
+                }
+            }
+            
+            await MainActor.run {
+                self.availableModels = models
+                if self.selectedModel.isEmpty || !models.contains(self.selectedModel) {
+                    self.selectedModel = models.first(where: { $0.contains("deepseek-v4-flash-free") }) ?? models.first ?? ""
+                    UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
+                }
+            }
+        }
     }
     
     /// Persists a Tweak setting toggle and reloads preferences
@@ -673,19 +747,24 @@ class StorageViewModel: ObservableObject {
     // MARK: - Quick Notes Methods
     
     /// Adds a new quick note and persists it
-    func addQuickNote(title: String, content: String) {
+    func addQuickNote(title: String, content: String, folder: String?) {
         guard !title.isEmpty, !content.isEmpty else { return }
-        let newNote = QuickNote(id: UUID(), title: title, content: content, dateCreated: Date())
+        let cleanFolder = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folderValue = cleanFolder?.isEmpty == true ? nil : cleanFolder
+        let newNote = QuickNote(id: UUID(), title: title, content: content, dateCreated: Date(), folder: folderValue)
         self.quickNotes.append(newNote)
         saveQuickNotes()
     }
     
     /// Updates an existing quick note details and persists it
-    func updateQuickNote(id: UUID, title: String, content: String) {
+    func updateQuickNote(id: UUID, title: String, content: String, folder: String?) {
         guard !title.isEmpty, !content.isEmpty else { return }
         if let idx = quickNotes.firstIndex(where: { $0.id == id }) {
+            let cleanFolder = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let folderValue = cleanFolder?.isEmpty == true ? nil : cleanFolder
             quickNotes[idx].title = title
             quickNotes[idx].content = content
+            quickNotes[idx].folder = folderValue
             saveQuickNotes()
         }
     }
@@ -840,6 +919,17 @@ class StorageViewModel: ObservableObject {
         saveChatHistory()
     }
     
+    /// Updates details (title and folder) of a chat thread
+    func updateChatThread(id: UUID, title: String, folder: String?) {
+        guard !title.isEmpty else { return }
+        if let idx = chatThreads.firstIndex(where: { $0.id == id }) {
+            chatThreads[idx].title = title
+            let cleanFolder = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
+            chatThreads[idx].folder = cleanFolder?.isEmpty == true ? nil : cleanFolder
+            saveChatHistory()
+        }
+    }
+    
     /// Selects an existing chat thread
     func selectChatThread(id: UUID) {
         stopAiMessageQuery()
@@ -922,6 +1012,12 @@ class StorageViewModel: ObservableObject {
             }
             
             var arguments = ["run", textToSend, "--dir", "/tmp"]
+            
+            let model = await self.selectedModel
+            if !model.isEmpty {
+                arguments.append("-m")
+                arguments.append(model)
+            }
             
             // Auto-approve permissions if enabled by user
             let allowActions = await self.allowAiSystemActions
@@ -1020,6 +1116,11 @@ class StorageViewModel: ObservableObject {
             }
         }
         
+        var modelArg = ""
+        if !selectedModel.isEmpty {
+            modelArg = " -m \(selectedModel)"
+        }
+        
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("resume_opencode_session.command")
         
@@ -1029,8 +1130,9 @@ class StorageViewModel: ObservableObject {
         echo "=== Resuming Mac ASC AI Session in Terminal ==="
         echo "Session ID: \(sessionArg.isEmpty ? "New Session" : sessionArg)"
         echo "Attached Dir: \(dirArg.isEmpty ? "None" : dirArg)"
+        echo "Selected Model: \(selectedModel.isEmpty ? "Default" : selectedModel)"
         echo "================================================="
-        "\(binaryPath)"\(dirArg)\(sessionArg)
+        "\(binaryPath)"\(dirArg)\(sessionArg)\(modelArg)
         exec $SHELL
         """
         
@@ -1143,6 +1245,8 @@ class StorageViewModel: ObservableObject {
         "QuickNotes",
         "AIChatThreads",
         "AISelectedThreadId",
+        "AISelectedModel",
+        "AIFavoriteModels",
         "AIAllowSystemActions",
         "CachedStorageBreakdown"
     ]
@@ -1157,6 +1261,10 @@ class StorageViewModel: ObservableObject {
             } else if let stringVal = UserDefaults.standard.string(forKey: key) {
                 if let strData = stringVal.data(using: .utf8) {
                     exportDict[key] = "STR:" + strData.base64EncodedString()
+                }
+            } else if let arrayVal = UserDefaults.standard.stringArray(forKey: key) {
+                if let encoded = try? JSONEncoder().encode(arrayVal) {
+                    exportDict[key] = encoded.base64EncodedString()
                 }
             } else if let boolVal = UserDefaults.standard.object(forKey: key) as? Bool {
                 exportDict[key] = "BOOL:" + (boolVal ? "true" : "false")
@@ -1214,6 +1322,7 @@ class StorageViewModel: ObservableObject {
                 
                 // Reload preferences and cache into memory
                 loadTweakSettings()
+                loadSelectedModel()
                 loadPinnedFolders()
                 loadCustomCommands()
                 loadQuickNotes()
@@ -1244,6 +1353,7 @@ struct QuickNote: Identifiable, Codable, Equatable {
     var title: String
     var content: String
     var dateCreated: Date
+    var folder: String?
 }
 
 struct ChatMessage: Identifiable, Codable, Equatable {
@@ -1260,4 +1370,5 @@ struct ChatThread: Identifiable, Codable, Equatable {
     var attachedDirectory: String?
     var messages: [ChatMessage]
     let dateCreated: Date
+    var folder: String?
 }

@@ -23,11 +23,20 @@ struct DropdownView: View {
     // Quick Notes State
     @State private var newNoteTitle = ""
     @State private var newNoteContent = ""
+    @State private var newNoteFolder = ""
     @State private var isNoteFormExpanded = false
     @State private var editingNote: QuickNote? = nil
     @State private var noteToDelete: QuickNote? = nil
     @State private var showNoteDeleteConfirmation = false
     @State private var copiedNoteId: UUID? = nil
+    @State private var collapsedNotesFolders: Set<String> = []
+    
+    // AI Chat State
+    @State private var editingThread: ChatThread? = nil
+    @State private var newThreadTitleInput = ""
+    @State private var newThreadFolderInput = ""
+    @State private var showEditThreadDialog = false
+    @State private var showAllModels = false
     
     // AI Chat State
     @State private var tabPageIndex: Int = 0
@@ -1413,13 +1422,35 @@ extension DropdownView {
                             .foregroundColor(.white)
                             .font(.system(size: 11, design: .monospaced))
                             
-                        TextField("Folder Name (Optional)", text: $newCommandFolder)
-                            .textFieldStyle(.plain)
-                            .padding(8)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(6)
-                            .foregroundColor(.white)
-                            .font(.system(size: 12))
+                        HStack(spacing: 6) {
+                            TextField("Folder Name (Optional)", text: $newCommandFolder)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                                .foregroundColor(.white)
+                                .font(.system(size: 12))
+                            
+                            let existingFolders = Array(Set(viewModel.customCommands.compactMap { $0.folder })).filter { !$0.isEmpty }.sorted()
+                            if !existingFolders.isEmpty {
+                                Menu {
+                                    ForEach(existingFolders, id: \.self) { folder in
+                                        Button(folder) {
+                                            newCommandFolder = folder
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "folder.badge.plus")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.purple)
+                                        .padding(8)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(6)
+                                }
+                                .menuStyle(.button)
+                                .help("Choose from existing folders")
+                            }
+                        }
 
                         TextField("Window Tag / Group (Optional)", text: $newCommandTag)
                             .textFieldStyle(.plain)
@@ -1729,6 +1760,7 @@ extension DropdownView {
                                 editingNote = nil
                                 newNoteTitle = ""
                                 newNoteContent = ""
+                                newNoteFolder = ""
                             }
                             isNoteFormExpanded.toggle()
                         }
@@ -1768,6 +1800,36 @@ extension DropdownView {
                                     .allowsHitTesting(false)
                             }
                         }
+                        
+                        HStack(spacing: 6) {
+                            TextField("Folder Name (Optional)", text: $newNoteFolder)
+                                .textFieldStyle(.plain)
+                                .padding(8)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                                .foregroundColor(.white)
+                                .font(.system(size: 12))
+                            
+                            let existingFolders = Array(Set(viewModel.quickNotes.compactMap { $0.folder })).filter { !$0.isEmpty }.sorted()
+                            if !existingFolders.isEmpty {
+                                Menu {
+                                    ForEach(existingFolders, id: \.self) { folder in
+                                        Button(folder) {
+                                            newNoteFolder = folder
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "folder.badge.plus")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.orange)
+                                        .padding(8)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(6)
+                                }
+                                .menuStyle(.button)
+                                .help("Choose from existing folders")
+                            }
+                        }
                     }
                     .padding(.top, 4)
                     
@@ -1777,6 +1839,7 @@ extension DropdownView {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     newNoteTitle = ""
                                     newNoteContent = ""
+                                    newNoteFolder = ""
                                     editingNote = nil
                                     isNoteFormExpanded = false
                                 }
@@ -1795,12 +1858,13 @@ extension DropdownView {
                         
                         Button(action: {
                             if let note = editingNote {
-                                viewModel.updateQuickNote(id: note.id, title: newNoteTitle, content: newNoteContent)
+                                viewModel.updateQuickNote(id: note.id, title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
                             } else {
-                                viewModel.addQuickNote(title: newNoteTitle, content: newNoteContent)
+                                viewModel.addQuickNote(title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
                             }
                             newNoteTitle = ""
                             newNoteContent = ""
+                            newNoteFolder = ""
                             editingNote = nil
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isNoteFormExpanded = false
@@ -1854,9 +1918,75 @@ extension DropdownView {
                     .background(Color.white.opacity(0.02))
                     .cornerRadius(10)
                 } else {
-                    VStack(spacing: 8) {
-                        ForEach(viewModel.quickNotes) { note in
-                            noteRow(for: note)
+                    let folders = Array(Set(viewModel.quickNotes.compactMap { $0.folder })).sorted()
+                    let uncategorized = viewModel.quickNotes.filter { $0.folder == nil || $0.folder?.isEmpty == true }
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Uncategorized Saved Notes
+                        if !uncategorized.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(uncategorized) { note in
+                                    noteRow(for: note)
+                                }
+                            }
+                        }
+                        
+                        // Folder Groupings
+                        ForEach(folders, id: \.self) { folder in
+                            let folderNotes = viewModel.quickNotes.filter { $0.folder == folder }
+                            let isCollapsed = collapsedNotesFolders.contains(folder)
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if isCollapsed {
+                                            collapsedNotesFolders.remove(folder)
+                                        } else {
+                                            collapsedNotesFolders.insert(folder)
+                                        }
+                                    }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.secondary)
+                                        
+                                        Image(systemName: "folder.fill")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.orange.opacity(0.85))
+                                        
+                                        Text(folder)
+                                            .font(.caption)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(.secondary)
+                                        
+                                        Spacer()
+                                        
+                                        Text("\(folderNotes.count)")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.white.opacity(0.08))
+                                            .cornerRadius(4)
+                                    }
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 6)
+                                    .background(Color.white.opacity(0.02))
+                                    .cornerRadius(6)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                
+                                if !isCollapsed {
+                                    VStack(spacing: 8) {
+                                        ForEach(folderNotes) { note in
+                                            noteRow(for: note)
+                                        }
+                                    }
+                                    .padding(.leading, 12)
+                                }
+                            }
                         }
                     }
                 }
@@ -1912,6 +2042,7 @@ extension DropdownView {
                     editingNote = note
                     newNoteTitle = note.title
                     newNoteContent = note.content
+                    newNoteFolder = note.folder ?? ""
                     withAnimation(.easeInOut(duration: 0.25)) {
                         isNoteFormExpanded = true
                     }
@@ -1943,12 +2074,16 @@ extension DropdownView {
     
     // MARK: - AI Chat UI Section
     
+    // MARK: - AI Chat UI Section
+    
     private var aiChatSection: some View {
         VStack(spacing: 8) {
-            // Thread Selection Control
-            HStack {
+            // Thread Selection Control & Model Selection
+            HStack(spacing: 6) {
                 Menu {
-                    ForEach(viewModel.chatThreads) { thread in
+                    // Uncategorized chat threads
+                    let uncategorized = viewModel.chatThreads.filter { $0.folder == nil || $0.folder?.isEmpty == true }
+                    ForEach(uncategorized) { thread in
                         Button(action: {
                             viewModel.selectChatThread(id: thread.id)
                         }) {
@@ -1960,9 +2095,31 @@ extension DropdownView {
                             }
                         }
                     }
-                    if !viewModel.chatThreads.isEmpty {
+                    
+                    // Folder groupings
+                    let folders = Array(Set(viewModel.chatThreads.compactMap { $0.folder })).sorted()
+                    if !folders.isEmpty {
                         Divider()
                     }
+                    ForEach(folders, id: \.self) { folder in
+                        Menu(folder) {
+                            let folderThreads = viewModel.chatThreads.filter { $0.folder == folder }
+                            ForEach(folderThreads) { thread in
+                                Button(action: {
+                                    viewModel.selectChatThread(id: thread.id)
+                                }) {
+                                    HStack {
+                                        Text(thread.title)
+                                        if thread.id == viewModel.selectedThreadId {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    Divider()
                     Button(action: {
                         viewModel.createNewChatThread()
                     }) {
@@ -1974,6 +2131,7 @@ extension DropdownView {
                             .font(.system(size: 10))
                         Text(viewModel.selectedThread?.title ?? "No Chat Selected")
                             .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 8))
                     }
@@ -1982,6 +2140,88 @@ extension DropdownView {
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.06))
                     .cornerRadius(6)
+                }
+                .menuStyle(.button)
+                
+                Menu {
+                    // Actions on current selected model
+                    if !viewModel.selectedModel.isEmpty {
+                        let isFav = viewModel.favoriteModels.contains(viewModel.selectedModel)
+                        Button(action: {
+                            viewModel.toggleFavorite(viewModel.selectedModel)
+                        }) {
+                            Label(isFav ? "Remove Current from Favorites" : "Add Current to Favorites", systemImage: isFav ? "star.slash" : "star")
+                        }
+                    }
+                    
+                    Button(action: {
+                        showAllModels.toggle()
+                    }) {
+                        Label(showAllModels ? "Show Favorites Only" : "See All Models", systemImage: showAllModels ? "star.circle" : "list.bullet")
+                    }
+                    
+                    Divider()
+                    
+                    if showAllModels {
+                        let providers = Array(Set(viewModel.availableModels.compactMap { $0.components(separatedBy: "/").first })).sorted()
+                        if providers.isEmpty {
+                            Button("No Models Found") {}
+                                .disabled(true)
+                        } else {
+                            ForEach(providers, id: \.self) { provider in
+                                Section(header: Text(provider)) {
+                                    let providerModels = viewModel.availableModels.filter { $0.hasPrefix(provider + "/") }
+                                    ForEach(providerModels, id: \.self) { model in
+                                        let isFav = viewModel.favoriteModels.contains(model)
+                                        Button(action: {
+                                            viewModel.selectedModel = model
+                                            UserDefaults.standard.set(model, forKey: "AISelectedModel")
+                                        }) {
+                                            HStack {
+                                                Text(model.components(separatedBy: "/").last ?? model)
+                                                if isFav {
+                                                    Image(systemName: "star.fill")
+                                                }
+                                                if model == viewModel.selectedModel {
+                                                    Image(systemName: "checkmark")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Favorites section (default view)
+                        if viewModel.favoriteModels.isEmpty {
+                            Button("No Favorite Models") {}
+                                .disabled(true)
+                        } else {
+                            Section("Favorite Models") {
+                                ForEach(viewModel.favoriteModels, id: \.self) { model in
+                                    Button(action: {
+                                        viewModel.selectedModel = model
+                                        UserDefaults.standard.set(model, forKey: "AISelectedModel")
+                                    }) {
+                                        HStack {
+                                            Text(model.components(separatedBy: "/").last ?? model)
+                                            if model == viewModel.selectedModel {
+                                                Image(systemName: "checkmark")
+                                            }
+                                            Image(systemName: "star.fill")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "cpu")
+                        .font(.system(size: 10))
+                        .foregroundColor(.green)
+                        .padding(6)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
                 }
                 .menuStyle(.button)
                 
@@ -2055,6 +2295,67 @@ extension DropdownView {
                     }
                     .buttonStyle(.plain)
                     .help("Continue this chat session interactively in macOS Terminal")
+                    
+                    // Edit Thread details button
+                    if let selectedId = viewModel.selectedThreadId {
+                        Button(action: {
+                            if let thread = viewModel.selectedThread {
+                                newThreadTitleInput = thread.title
+                                newThreadFolderInput = thread.folder ?? ""
+                                showEditThreadDialog = true
+                            }
+                        }) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 10))
+                                .foregroundColor(.blue)
+                                .padding(6)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Rename or move this chat thread")
+                        .popover(isPresented: $showEditThreadDialog, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Edit Chat Thread")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                
+                                TextField("Thread Title", text: $newThreadTitleInput)
+                                    .textFieldStyle(.plain)
+                                    .padding(6)
+                                    .background(Color.white.opacity(0.08))
+                                    .cornerRadius(4)
+                                    .font(.system(size: 11))
+                                
+                                TextField("Folder (Optional)", text: $newThreadFolderInput)
+                                    .textFieldStyle(.plain)
+                                    .padding(6)
+                                    .background(Color.white.opacity(0.08))
+                                    .cornerRadius(4)
+                                    .font(.system(size: 11))
+                                
+                                HStack {
+                                    Button("Cancel") {
+                                        showEditThreadDialog = false
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption2)
+                                    
+                                    Spacer()
+                                    
+                                    Button("Save") {
+                                        viewModel.updateChatThread(id: selectedId, title: newThreadTitleInput, folder: newThreadFolderInput)
+                                        showEditThreadDialog = false
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .font(.caption2)
+                                    .disabled(newThreadTitleInput.isEmpty)
+                                }
+                            }
+                            .padding(10)
+                            .frame(width: 180)
+                        }
+                    }
                     
                     // Delete Active Thread Button
                     if let selectedId = viewModel.selectedThreadId {

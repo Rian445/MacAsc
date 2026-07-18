@@ -9,16 +9,16 @@ Last Updated: July 2, 2026
 ## 🔒 1. 100% Offline & Local Operation
 All operations are executed entirely on your machine:
 * **Storage Breakdown Analysis**: The directory size calculation is handled locally using native macOS system calls (`FileManager`).
-* **Pinned Folders & Notes**: Paths to folders you pin and quick notes you write are saved locally in the standard macOS user preferences (`UserDefaults`) and never shared.
-* **Settings Backup**: When exporting settings backups, the app encodes your commands, notes, pins, and AI history into a local JSON file of your choosing. No third-party servers or telemetry are involved in the backup process.
+* **Pinned Folders & Notes**: Paths to folders you pin, quick notes you write, and their folder organization structures are saved locally in the standard macOS user preferences (`UserDefaults`) and never shared.
+* **Settings Backup**: When exporting settings backups, the app encodes your commands, notes, pins, active model selection, favorite models list, and AI history into a local JSON file of your choosing. No third-party servers or telemetry are involved in the backup process.
 * **Custom Terminal Commands**: Your shell shortcuts are stored locally on your device's preferences and executed using standard macOS command processes.
 
 ## 🤖 2. Local AI Chat Integration (opencode)
 * **Subprocess Execution**: The **Chat with AI** panel communicates with the locally installed `opencode` command-line tool. It spawns `opencode` as a background subprocess using your standard user account privileges.
-* **Local Session Storage**: Your chat threads, history, and generated responses are saved strictly on your local disk inside macOS user preferences (`UserDefaults`) under the key `AIChatThreads`. 
+* **Local Session Storage**: Your chat threads, history, thread titles, folder groupings, selected active model (`AISelectedModel`), and favorites list (`AIFavoriteModels`) are saved strictly on your local disk inside macOS user preferences (`UserDefaults`). 
 * **File & Folder Context**: Dropping files/folders or attaching paths via the paperclip menu only captures their absolute string path. The app does **not** read or store the contents of your files. It only appends the path string (e.g. `Context Path: /path/to/file`) to the local prompt query.
 * **System Actions Toggle (Optional)**: By default, the app blocks all system tools and file modification calls requested by the AI. If you choose to enable the **System Actions** toggle (red shield icon), the app runs the subprocess with the `--dangerously-skip-permissions` flag. This auto-approves local file writes and terminal commands, executing them strictly locally on your machine under your standard user permissions.
-* **Terminal Handoff**: When clicking the **Terminal** icon button to continue a chat session, it launches a temporary `.command` shell script containing `opencode <project> --session <id>` inside your default macOS Terminal application. This script runs strictly locally with standard user privileges.
+* **Terminal Handoff**: When clicking the **Terminal** icon button to continue a chat session, it launches a temporary `.command` shell script containing `opencode <project> --session <id> -m <model>` inside your default macOS Terminal application. This script runs strictly locally with standard user privileges.
 * **Data Transmission**: Mac ASC itself does **not** have internet access and does **not** transmit or upload your prompts. Any networking required to generate AI responses (e.g. sending queries to DeepSeek or OpenAI) is handled entirely by your own locally installed and configured `opencode` utility, using your personal credentials stored on your Mac.
 
 ## 🌐 3. Zero Network Connectivity (ATS Block)

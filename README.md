@@ -25,12 +25,13 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * **Page 0**: *Disk Insight* & *Custom Commands*
   * **Page 1**: *Quick Note* & *Chat with AI*
 * **🤖 Chat with Local AI (opencode)**: A dedicated chat interface that communicates with your locally installed `opencode` command-line utility:
-  * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
+  * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads (groupable under folders).
   * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
   * **Context continuation**: Uses your local database session ID (scraped dynamically from log output) to continue specific conversation histories for follow-up questions.
+  * **Favorite Models & Provider Groupings**: An icon-only green CPU dropdown selector allows switching between models. Mark models as favorites for quick selection, or toggle "See All" to browse all models (queried dynamically from `opencode models`) grouped by their provider (e.g. google, deepseek, nvidia) in a flat, crash-free menu.
   * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Context Path: <path>`) into your next query, allowing the AI to inspect files or folder contexts.
   * **Visual State Handoff**: The paperclip icon lights up in yellow (`paperclip.circle.fill`) when a file or directory is attached.
-  * **Terminal Handoff (Interactive Mode)**: Click the **Terminal** icon button to open a new macOS Terminal window running `opencode` with the active thread's session ID and context folder preloaded.
+  * **Terminal Handoff (Interactive Mode)**: Click the **Terminal** icon button to open a new macOS Terminal window running `opencode` with the active thread's session ID, model, and context folder preloaded.
   * **System Actions Toggle (Optional)**: A toggle represented by a shield icon (`green` for safe/blocked mode, `red` for active/bypass mode) that enables passing the `--dangerously-skip-permissions` flag. This allows the AI to auto-approve tool execution requests (such as creating folders, writing code files, or running command-line scripts) locally on your Mac.
   * **Clean Output Filtering**: Automatically filters out shell TUI progress loaders (`> build · ...`) and logs (`timestamp=...`), presenting clean text results.
   * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.
@@ -48,17 +49,18 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **🧹 Mole Cleaner Integration**: Automatically detects if the interactive CLI cleaning utility `mo` is installed. Allows launching it directly inside a new Terminal window with a single click, or guides you to the download page.
 * **⌨️ Custom Terminal Commands**: A dedicated tab for developers and power users to configure shell script shortcuts:
   * Group saved commands visually into collapsible, structured **Folder Categories**.
-  * Add commands using a **collapsible creation form** with an optional folder category input.
+  * Add commands using a **collapsible creation form** with an optional folder category input and a **Folder Badge Picker** dropdown button to auto-select from previously created folders.
   * **Window Tag / Grouping**: Assign an optional window tag to commands. Commands sharing the same tag will execute in the **same** Terminal window/tab sequentially instead of spawning new Terminal windows.
   * **Edit saved commands** inline using a pen edit button (fills input fields with pre-filled details, Cancel/Save action layout).
   * Execute saved shell commands in a new Terminal window with a single click.
   * **Stop commands**: Safely terminate active commands individually (orange stop button displays only on actively executing rows) or run a global **Stop All** process interruption routine (sending Ctrl+C process group signals).
   * **Safety Deletion Confirmation**: Displays a secure confirmation dialog when deleting saved commands to prevent accidental loss.
 * **📝 Quick Notes**: A dedicated tab to save and copy text snippets, commands, or reminders:
-  * Add notes using a **collapsible creation form** with animated transitions.
+  * Group saved notes visually into collapsible, structured **Folder Categories** (uncategorized notes listed first).
+  * Add notes using a **collapsible creation form** with animated transitions and a **Folder Badge Picker** dropdown button to auto-select from previously created folders.
   * **Edit saved notes** inline to quickly correct or update text.
   * **Copy notes instantly** with a dedicated copy button next to each note (features checkmark visual feedback).
-  * **Persistent Storage**: Saves your notes locally in macOS user preferences (`UserDefaults`) so they are available across launches.
+  * **Persistent Storage**: Saves your notes locally in macOS user preferences (`UserDefaults`) along with folder hierarchies so they are available across launches.
 * **⚙️ Main Window Settings & Tweaks**: A new Settings icon button in the header opens preferences directly in the main window:
   * **About Page**: Lists developed details, ATS security specifications, and exact disk usage/preference sizes for the application.
   * **Dashboard Tweaks**: Toggle switches to show or hide dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) dynamically.
