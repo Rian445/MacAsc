@@ -96,20 +96,29 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 3. Drag **Mac ASC** into your **Applications** folder.
 
 #### Option 2: Homebrew Cask (Tap)
-You can tap this repository and install the application directly via Homebrew:
+You can tap this repository and install the application directly via Homebrew.
+
 ```bash
-# Tap the repository directly
+# 1. Tap the repository directly
 brew tap Rian445/MacAsc https://github.com/Rian445/MacAsc.git
 
-# Install the application
+# 2. Trust the tap (Required for third-party user taps on newer Homebrew versions)
+brew trust rian445/macasc
+
+# 3. Install the application
 brew install --cask macasc
 ```
 
+> [!IMPORTANT]
+> **Why is `brew trust` required?**
+> To safeguard users, recent versions of Homebrew require explicit approval before installing software from non-default, third-party user taps. Without running this, you may receive a `Refusing to load cask... from untrusted tap` block.
+> 
+> Running `brew trust rian445/macasc` permits Homebrew to compile and load the formula. You can verify and proceed with total peace of mind:
+> * **100% Open Source**: All source code is public and auditable in this repository.
+> * **Zero Data Collection**: The app is built to run 100% locally and offline. It uses strict App Transport Security (ATS) firewall directives at the OS layer to block all network access, ensuring your storage details, notes, and local AI prompts never leave your Mac.
+
 > [!TIP]
 > **Quarantine Bypass**: Installing via Homebrew Cask automatically runs a postflight script to clear the `com.apple.quarantine` attribute, allowing the app to launch instantly without macOS Gatekeeper verification warnings.
-
-> [!NOTE]
-> **Untrusted Tap Warning**: On recent versions of Homebrew, you may receive a warning: `Refusing to load cask rian445/macasc/macasc from untrusted tap`. If this occurs, simply run `brew trust rian445/macasc` to mark the tap as trusted, then run the install command again.
 
 #### Option 3: Build from Source
 1. **Clone the Repository**:
