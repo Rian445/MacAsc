@@ -45,24 +45,18 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **📌 Folder Pinning & Size Tracker**: Select and pin custom directories to the dashboard. The application calculates directory sizes asynchronously in the background and provides single-click Finder access.
 * **📱 Interactive App List**: Automatically lists your top installed applications by size. Click "Other Apps" to expand and view the full list, or tap on any application to instantly locate it in Finder.
 * **🧹 Mole Cleaner Integration**: Automatically detects if the interactive CLI cleaning utility `mo` is installed. Allows launching it directly inside a new Terminal window with a single click, or guides you to the download page.
-* **⌨️ Custom Terminal Commands**: A dedicated tab for developers and power users to configure shell script shortcuts:
-  * Group saved commands visually into collapsible, structured **Folder Categories**.
-  * Add commands using a **collapsible creation form** with an optional folder category input and a **Folder Badge Picker** dropdown button to auto-select from previously created folders.
-  * **Window Tag / Grouping**: Assign an optional window tag to commands. Commands sharing the same tag will execute in the **same** Terminal window/tab sequentially instead of spawning new Terminal windows.
-  * **Edit saved commands** inline using a pen edit button (fills input fields with pre-filled details, Cancel/Save action layout).
-  * Execute saved shell commands in a new Terminal window with a single click.
-  * **Stop commands**: Safely terminate active commands individually (orange stop button displays only on actively executing rows) or run a global **Stop All** process interruption routine (sending Ctrl+C process group signals).
-  * **Safety Deletion Confirmation**: Displays a secure confirmation dialog when deleting saved commands to prevent accidental loss.
-* **📝 Quick Notes**: A dedicated tab to save and copy text snippets, commands, or reminders:
-  * Group saved notes visually into collapsible, structured **Folder Categories** (uncategorized notes listed first).
-  * Add notes using a **collapsible creation form** with animated transitions and a **Folder Badge Picker** dropdown button to auto-select from previously created folders.
-  * **Edit saved notes** inline to quickly correct or update text.
-  * **Copy notes instantly** with a dedicated copy button next to each note (features checkmark visual feedback).
-  * **Persistent Storage**: Saves your notes locally in macOS user preferences (`UserDefaults`) along with folder hierarchies so they are available across launches.
-* **⚙️ Main Window Settings & Tweaks**: A new Settings icon button in the header opens preferences directly in the main window:
+* **📁 Nested Subfolders & Tree Hierarchy**: Supports unlimited nested folder trees using forward-slash path strings (e.g. `DevOps/Docker` or `Work/Projects/Scripts`) across Custom Commands and Quick Notes. Subfolders render with visual tree indentation, recursive collapse/expand, and item count badges.
+* **🔃 Interactive Sort Mode & Drag-and-Drop Nesting**: Click the **Sort** button at the top of Saved Commands or Saved Notes to activate manual sorting mode:
+  * **Up / Down Arrow Controls**: Manually reorder folders, subfolders, and individual items up and down.
+  * **Drag-and-Drop Folder Nesting**: Drag any folder and drop it onto another folder to nest it inside (`Target Folder / Dragged Folder`).
+  * **Move Out / Un-nest (`[↰]`)**: Click the Move Out button on any nested subfolder to un-nest it out of its parent folder.
+  * **Strict Safety**: Drag-and-drop gesture interaction is strictly locked when Sort mode is off, preventing accidental folder moves during daily clicking.
+* **↔️ Expand / Collapse All**: A dedicated button beside the Sort button allows expanding or collapsing all folders across all nesting levels in a single click.
+* **🗑️ Safe Folder Deletion**: Delete folders directly using the minus button with a safety confirmation dialog giving you the choice to **Uncategorize Items** (keep commands/notes) or **Delete Folder & All Contents**.
+* **⚙️ Main Window Settings & Tab Reordering**: A Settings icon button in the header opens preferences directly in the main window:
   * **About Page**: Lists developed details, ATS security specifications, and exact disk usage/preference sizes for the application.
-  * **Dashboard Tweaks**: Toggle switches to show or hide dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) dynamically.
-  * **Backup & Restore**: Export all custom commands, quick notes, pinned folders, tweaks, and AI chat sessions into a JSON backup file, or upload/import a backup file to restore your configuration instantly.
+  * **Dashboard Tweaks & Tab Reordering**: Toggle switches to show or hide dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) and manually reorder dashboard tabs using Up/Down controls.
+  * **Comprehensive Backup & Restore**: Export all custom commands, quick notes, nested subfolder structures, tab sorting order, folder sort orders, pinned folders, tweaks, and AI chat sessions into a JSON backup file, or upload/import a backup file to restore your configuration instantly.
 * **💾 Local Storage Cache**: Caches scanned storage categories locally. On launch, it loads previous statistics instantly, ensuring a fast load time without display lag.
 * **🔒 100% Offline & Secure**: Operates strictly offline. Has zero dependencies on network frameworks and is locked down via App Transport Security (ATS) to ensure your storage details never leave your device.
 

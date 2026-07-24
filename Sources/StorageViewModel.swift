@@ -33,6 +33,8 @@ class StorageViewModel: ObservableObject {
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
     @Published var tabOrder: [Int] = [0, 1, 2, 3]
+    @Published var customCommandFolderOrder: [String] = []
+    @Published var quickNoteFolderOrder: [String] = []
     @Published var availableModels: [String] = []
     @Published var selectedModel: String = ""
     @Published var favoriteModels: [String] = []
@@ -73,12 +75,15 @@ class StorageViewModel: ObservableObject {
         refresh()
     }
     
-    /// Loads the Tweak settings for enabling/disabling dashboard tabs and custom tab ordering
+    /// Loads the Tweak settings for enabling/disabling dashboard tabs, custom tab ordering, and sort preferences
     private func loadTweakSettings() {
         self.enableDiskInsight = UserDefaults.standard.object(forKey: "TweakDiskInsight") as? Bool ?? true
         self.enableCustomCommands = UserDefaults.standard.object(forKey: "TweakCustomCommands") as? Bool ?? true
         self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
         self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
+        
+        self.customCommandFolderOrder = UserDefaults.standard.stringArray(forKey: "CustomCommandFolderOrder") ?? []
+        self.quickNoteFolderOrder = UserDefaults.standard.stringArray(forKey: "QuickNoteFolderOrder") ?? []
         
         if let savedOrder = UserDefaults.standard.array(forKey: "DashboardTabOrder") as? [Int], !savedOrder.isEmpty {
             var order = savedOrder.filter { [0, 1, 2, 3].contains($0) }
@@ -89,6 +94,333 @@ class StorageViewModel: ObservableObject {
         } else {
             self.tabOrder = [0, 1, 2, 3]
         }
+    }
+    
+    // MARK: - Folder Tree & Reordering Helpers
+    
+    func buildFolderTree(from rawPaths: [String], customOrder: [String]) -> [FolderNode] {
+        var allPathsSet = Set<String>()
+        for rawPath in rawPaths {
+            let components = rawPath.split(separator: "/").map(String.init)
+            var currentPath = ""
+            for (idx, comp) in components.enumerated() {
+                currentPath = idx == 0 ? comp : "\(currentPath)/\(comp)"
+                allPathsSet.insert(currentPath)
+            }
+        }
+        
+        func buildNodes(parentPath: String?) -> [FolderNode] {
+            let candidatePaths: [String]
+            if let parent = parentPath {
+                let prefix = parent + "/"
+                candidatePaths = allPathsSet.filter { path in
+                    path.hasPrefix(prefix) && !path.dropFirst(prefix.count).contains("/")
+                }
+            } else {
+                candidatePaths = allPathsSet.filter { !$0.contains("/") }
+            }
+            
+            var ordered = customOrder.filter { candidatePaths.contains($0) }
+            for p in candidatePaths.sorted() {
+                if !ordered.contains(p) {
+                    ordered.append(p)
+                }
+            }
+            
+            return ordered.map { path in
+                let name = String(path.split(separator: "/").last ?? "")
+                let children = buildNodes(parentPath: path)
+                return FolderNode(name: name, fullPath: path, subfolders: children)
+            }
+        }
+        
+        return buildNodes(parentPath: nil)
+    }
+    
+    func getCommandFolderTree() -> [FolderNode] {
+        let rawFolders = Array(Set(customCommands.compactMap { $0.folder })).filter { !$0.isEmpty }
+        return buildFolderTree(from: rawFolders, customOrder: customCommandFolderOrder)
+    }
+    
+    func getNoteFolderTree() -> [FolderNode] {
+        let rawFolders = Array(Set(quickNotes.compactMap { $0.folder })).filter { !$0.isEmpty }
+        return buildFolderTree(from: rawFolders, customOrder: quickNoteFolderOrder)
+    }
+    
+    func getFormattedFolderPaths(_ nodes: [FolderNode], depth: Int = 0) -> [(path: String, label: String)] {
+        var result: [(path: String, label: String)] = []
+        let indent = String(repeating: "   ", count: depth)
+        let prefixStr = depth == 0 ? "" : "└── "
+        for node in nodes {
+            let label = "\(indent)\(prefixStr)\(node.name)"
+            result.append((path: node.fullPath, label: label))
+            result.append(contentsOf: getFormattedFolderPaths(node.subfolders, depth: depth + 1))
+        }
+        return result
+    }
+    
+    func moveCommandFolderUp(name: String) {
+        let siblings = getSiblingFolderPaths(for: name, in: getCommandFolderTree())
+        guard let idx = siblings.firstIndex(of: name), idx > 0 else { return }
+        var order = customCommandFolderOrder
+        let target = siblings[idx - 1]
+        if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+            order.swapAt(idxA, idxB)
+        } else {
+            if !order.contains(name) { order.append(name) }
+            if !order.contains(target) { order.append(target) }
+            if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+                order.swapAt(idxA, idxB)
+            }
+        }
+        customCommandFolderOrder = order
+        UserDefaults.standard.set(order, forKey: "CustomCommandFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func moveCommandFolderDown(name: String) {
+        let siblings = getSiblingFolderPaths(for: name, in: getCommandFolderTree())
+        guard let idx = siblings.firstIndex(of: name), idx < siblings.count - 1 else { return }
+        var order = customCommandFolderOrder
+        let target = siblings[idx + 1]
+        if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+            order.swapAt(idxA, idxB)
+        } else {
+            if !order.contains(name) { order.append(name) }
+            if !order.contains(target) { order.append(target) }
+            if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+                order.swapAt(idxA, idxB)
+            }
+        }
+        customCommandFolderOrder = order
+        UserDefaults.standard.set(order, forKey: "CustomCommandFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func moveNoteFolderUp(name: String) {
+        let siblings = getSiblingFolderPaths(for: name, in: getNoteFolderTree())
+        guard let idx = siblings.firstIndex(of: name), idx > 0 else { return }
+        var order = quickNoteFolderOrder
+        let target = siblings[idx - 1]
+        if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+            order.swapAt(idxA, idxB)
+        } else {
+            if !order.contains(name) { order.append(name) }
+            if !order.contains(target) { order.append(target) }
+            if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+                order.swapAt(idxA, idxB)
+            }
+        }
+        quickNoteFolderOrder = order
+        UserDefaults.standard.set(order, forKey: "QuickNoteFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func moveNoteFolderDown(name: String) {
+        let siblings = getSiblingFolderPaths(for: name, in: getNoteFolderTree())
+        guard let idx = siblings.firstIndex(of: name), idx < siblings.count - 1 else { return }
+        var order = quickNoteFolderOrder
+        let target = siblings[idx + 1]
+        if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+            order.swapAt(idxA, idxB)
+        } else {
+            if !order.contains(name) { order.append(name) }
+            if !order.contains(target) { order.append(target) }
+            if let idxA = order.firstIndex(of: name), let idxB = order.firstIndex(of: target) {
+                order.swapAt(idxA, idxB)
+            }
+        }
+        quickNoteFolderOrder = order
+        UserDefaults.standard.set(order, forKey: "QuickNoteFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    private func getSiblingFolderPaths(for name: String, in tree: [FolderNode]) -> [String] {
+        let parentPath: String? = name.contains("/") ? String(name.prefix(upTo: name.lastIndex(of: "/")!)) : nil
+        if let parent = parentPath {
+            func findSiblings(_ nodes: [FolderNode]) -> [FolderNode]? {
+                for node in nodes {
+                    if node.fullPath == parent {
+                        return node.subfolders
+                    }
+                    if let found = findSiblings(node.subfolders) {
+                        return found
+                    }
+                }
+                return nil
+            }
+            return (findSiblings(tree) ?? []).map { $0.fullPath }
+        } else {
+            return tree.map { $0.fullPath }
+        }
+    }
+    
+    // MARK: - Folder Deletion & Drag-and-Drop Nesting Logic
+    
+    func deleteCommandFolder(_ folderPath: String, deleteContents: Bool) {
+        if deleteContents {
+            customCommands.removeAll { cmd in
+                guard let f = cmd.folder else { return false }
+                return f == folderPath || f.hasPrefix(folderPath + "/")
+            }
+        } else {
+            for i in customCommands.indices {
+                if let f = customCommands[i].folder, f == folderPath || f.hasPrefix(folderPath + "/") {
+                    if f == folderPath {
+                        customCommands[i].folder = nil
+                    } else {
+                        let remaining = String(f.dropFirst(folderPath.count + 1))
+                        customCommands[i].folder = remaining.isEmpty ? nil : remaining
+                    }
+                }
+            }
+        }
+        saveCustomCommands()
+        customCommandFolderOrder.removeAll { $0 == folderPath || $0.hasPrefix(folderPath + "/") }
+        UserDefaults.standard.set(customCommandFolderOrder, forKey: "CustomCommandFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func deleteNoteFolder(_ folderPath: String, deleteContents: Bool) {
+        if deleteContents {
+            quickNotes.removeAll { note in
+                guard let f = note.folder else { return false }
+                return f == folderPath || f.hasPrefix(folderPath + "/")
+            }
+        } else {
+            for i in quickNotes.indices {
+                if let f = quickNotes[i].folder, f == folderPath || f.hasPrefix(folderPath + "/") {
+                    if f == folderPath {
+                        quickNotes[i].folder = nil
+                    } else {
+                        let remaining = String(f.dropFirst(folderPath.count + 1))
+                        quickNotes[i].folder = remaining.isEmpty ? nil : remaining
+                    }
+                }
+            }
+        }
+        saveQuickNotes()
+        quickNoteFolderOrder.removeAll { $0 == folderPath || $0.hasPrefix(folderPath + "/") }
+        UserDefaults.standard.set(quickNoteFolderOrder, forKey: "QuickNoteFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func nestCommandFolder(sourcePath: String, targetParentPath: String) {
+        guard sourcePath != targetParentPath && !targetParentPath.hasPrefix(sourcePath + "/") else { return }
+        let sourceFolderName = String(sourcePath.split(separator: "/").last ?? "")
+        let newFolderPath = targetParentPath.isEmpty ? sourceFolderName : "\(targetParentPath)/\(sourceFolderName)"
+        
+        for i in customCommands.indices {
+            if let f = customCommands[i].folder {
+                if f == sourcePath {
+                    customCommands[i].folder = newFolderPath
+                } else if f.hasPrefix(sourcePath + "/") {
+                    let suffix = String(f.dropFirst(sourcePath.count))
+                    customCommands[i].folder = newFolderPath + suffix
+                }
+            }
+        }
+        saveCustomCommands()
+        
+        var order = customCommandFolderOrder
+        if let idx = order.firstIndex(of: sourcePath) {
+            order.remove(at: idx)
+        }
+        if !order.contains(newFolderPath) {
+            order.append(newFolderPath)
+        }
+        customCommandFolderOrder = order
+        UserDefaults.standard.set(customCommandFolderOrder, forKey: "CustomCommandFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func nestNoteFolder(sourcePath: String, targetParentPath: String) {
+        guard sourcePath != targetParentPath && !targetParentPath.hasPrefix(sourcePath + "/") else { return }
+        let sourceFolderName = String(sourcePath.split(separator: "/").last ?? "")
+        let newFolderPath = targetParentPath.isEmpty ? sourceFolderName : "\(targetParentPath)/\(sourceFolderName)"
+        
+        for i in quickNotes.indices {
+            if let f = quickNotes[i].folder {
+                if f == sourcePath {
+                    quickNotes[i].folder = newFolderPath
+                } else if f.hasPrefix(sourcePath + "/") {
+                    let suffix = String(f.dropFirst(sourcePath.count))
+                    quickNotes[i].folder = newFolderPath + suffix
+                }
+            }
+        }
+        saveQuickNotes()
+        
+        var order = quickNoteFolderOrder
+        if let idx = order.firstIndex(of: sourcePath) {
+            order.remove(at: idx)
+        }
+        if !order.contains(newFolderPath) {
+            order.append(newFolderPath)
+        }
+        quickNoteFolderOrder = order
+        UserDefaults.standard.set(quickNoteFolderOrder, forKey: "QuickNoteFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func unnestCommandFolder(_ sourcePath: String) {
+        guard sourcePath.contains("/") else { return }
+        let components = sourcePath.split(separator: "/").map(String.init)
+        guard components.count > 1 else { return }
+        
+        let parentComponents = components.dropLast(2)
+        let newParentPath = parentComponents.joined(separator: "/")
+        nestCommandFolder(sourcePath: sourcePath, targetParentPath: newParentPath)
+    }
+
+    func unnestNoteFolder(_ sourcePath: String) {
+        guard sourcePath.contains("/") else { return }
+        let components = sourcePath.split(separator: "/").map(String.init)
+        guard components.count > 1 else { return }
+        
+        let parentComponents = components.dropLast(2)
+        let newParentPath = parentComponents.joined(separator: "/")
+        nestNoteFolder(sourcePath: sourcePath, targetParentPath: newParentPath)
+    }
+    
+    func moveCommandUp(id: UUID) {
+        guard let currentIdx = customCommands.firstIndex(where: { $0.id == id }) else { return }
+        let targetFolder = customCommands[currentIdx].folder
+        let groupIndices = customCommands.indices.filter { customCommands[$0].folder == targetFolder }
+        guard let posInGroup = groupIndices.firstIndex(of: currentIdx), posInGroup > 0 else { return }
+        let swapWithIdx = groupIndices[posInGroup - 1]
+        customCommands.swapAt(currentIdx, swapWithIdx)
+        saveCustomCommands()
+    }
+
+    func moveCommandDown(id: UUID) {
+        guard let currentIdx = customCommands.firstIndex(where: { $0.id == id }) else { return }
+        let targetFolder = customCommands[currentIdx].folder
+        let groupIndices = customCommands.indices.filter { customCommands[$0].folder == targetFolder }
+        guard let posInGroup = groupIndices.firstIndex(of: currentIdx), posInGroup < groupIndices.count - 1 else { return }
+        let swapWithIdx = groupIndices[posInGroup + 1]
+        customCommands.swapAt(currentIdx, swapWithIdx)
+        saveCustomCommands()
+    }
+
+    func moveNoteUp(id: UUID) {
+        guard let currentIdx = quickNotes.firstIndex(where: { $0.id == id }) else { return }
+        let targetFolder = quickNotes[currentIdx].folder
+        let groupIndices = quickNotes.indices.filter { quickNotes[$0].folder == targetFolder }
+        guard let posInGroup = groupIndices.firstIndex(of: currentIdx), posInGroup > 0 else { return }
+        let swapWithIdx = groupIndices[posInGroup - 1]
+        quickNotes.swapAt(currentIdx, swapWithIdx)
+        saveQuickNotes()
+    }
+
+    func moveNoteDown(id: UUID) {
+        guard let currentIdx = quickNotes.firstIndex(where: { $0.id == id }) else { return }
+        let targetFolder = quickNotes[currentIdx].folder
+        let groupIndices = quickNotes.indices.filter { quickNotes[$0].folder == targetFolder }
+        guard let posInGroup = groupIndices.firstIndex(of: currentIdx), posInGroup < groupIndices.count - 1 else { return }
+        let swapWithIdx = groupIndices[posInGroup + 1]
+        quickNotes.swapAt(currentIdx, swapWithIdx)
+        saveQuickNotes()
     }
     
     /// Moves a tab up in the display order
@@ -1278,6 +1610,8 @@ class StorageViewModel: ObservableObject {
         "TweakQuickNote",
         "TweakChatWithAi",
         "DashboardTabOrder",
+        "CustomCommandFolderOrder",
+        "QuickNoteFolderOrder",
         "PinnedFolders",
         "CustomCommands",
         "QuickNotes",
@@ -1289,23 +1623,31 @@ class StorageViewModel: ObservableObject {
         "CachedStorageBreakdown"
     ]
     
-    /// Exports all user settings, pinned folders, commands, notes, tweaks, and AI history to a JSON file
+    /// Exports all user settings, tab sorting order, folder sorting orders, pinned folders, commands, notes, tweaks, and AI history to a JSON file
     func backupUserSettings() {
         var exportDict: [String: String] = [:]
         
         for key in backupKeys {
             if let data = UserDefaults.standard.data(forKey: key) {
-                exportDict[key] = data.base64EncodedString()
+                exportDict[key] = "DATA:" + data.base64EncodedString()
+            } else if let intArr = UserDefaults.standard.array(forKey: key) as? [Int] {
+                if let encoded = try? JSONEncoder().encode(intArr) {
+                    exportDict[key] = "INTARR:" + encoded.base64EncodedString()
+                }
+            } else if let stringArray = UserDefaults.standard.stringArray(forKey: key) {
+                if let encoded = try? JSONEncoder().encode(stringArray) {
+                    exportDict[key] = "STRARR:" + encoded.base64EncodedString()
+                }
             } else if let stringVal = UserDefaults.standard.string(forKey: key) {
                 if let strData = stringVal.data(using: .utf8) {
                     exportDict[key] = "STR:" + strData.base64EncodedString()
                 }
-            } else if let arrayVal = UserDefaults.standard.stringArray(forKey: key) {
-                if let encoded = try? JSONEncoder().encode(arrayVal) {
-                    exportDict[key] = encoded.base64EncodedString()
-                }
             } else if let boolVal = UserDefaults.standard.object(forKey: key) as? Bool {
                 exportDict[key] = "BOOL:" + (boolVal ? "true" : "false")
+            } else if let obj = UserDefaults.standard.object(forKey: key) {
+                if let propertyList = try? PropertyListSerialization.data(fromPropertyList: obj, format: .binary, options: 0) {
+                    exportDict[key] = "PLIST:" + propertyList.base64EncodedString()
+                }
             }
         }
         
@@ -1326,7 +1668,7 @@ class StorageViewModel: ObservableObject {
         }
     }
     
-    /// Imports a JSON settings backup file, decoding and updating Preferences and UI state
+    /// Imports a JSON settings backup file, decoding and updating Preferences, tab ordering, folder ordering, and UI state
     func restoreUserSettings() {
         let openPanel = NSOpenPanel()
         openPanel.title = "Import Settings Backup"
@@ -1351,6 +1693,29 @@ class StorageViewModel: ObservableObject {
                            let strVal = String(data: decodedData, encoding: .utf8) {
                             UserDefaults.standard.set(strVal, forKey: key)
                         }
+                    } else if val.hasPrefix("INTARR:") {
+                        let base64Str = String(val.dropFirst(7))
+                        if let decodedData = Data(base64Encoded: base64Str),
+                           let intArr = try? JSONDecoder().decode([Int].self, from: decodedData) {
+                            UserDefaults.standard.set(intArr, forKey: key)
+                        }
+                    } else if val.hasPrefix("STRARR:") {
+                        let base64Str = String(val.dropFirst(7))
+                        if let decodedData = Data(base64Encoded: base64Str),
+                           let strArr = try? JSONDecoder().decode([String].self, from: decodedData) {
+                            UserDefaults.standard.set(strArr, forKey: key)
+                        }
+                    } else if val.hasPrefix("DATA:") {
+                        let base64Str = String(val.dropFirst(5))
+                        if let decodedData = Data(base64Encoded: base64Str) {
+                            UserDefaults.standard.set(decodedData, forKey: key)
+                        }
+                    } else if val.hasPrefix("PLIST:") {
+                        let base64Str = String(val.dropFirst(6))
+                        if let decodedData = Data(base64Encoded: base64Str),
+                           let plistObj = try? PropertyListSerialization.propertyList(from: decodedData, options: [], format: nil) {
+                            UserDefaults.standard.set(plistObj, forKey: key)
+                        }
                     } else {
                         if let decodedData = Data(base64Encoded: val) {
                             UserDefaults.standard.set(decodedData, forKey: key)
@@ -1358,7 +1723,7 @@ class StorageViewModel: ObservableObject {
                     }
                 }
                 
-                // Reload preferences and cache into memory
+                // Reload preferences, tab orders, folder orders, and cache into memory
                 loadTweakSettings()
                 loadSelectedModel()
                 loadPinnedFolders()
@@ -1377,6 +1742,13 @@ class StorageViewModel: ObservableObject {
 }
 
 // MARK: - Models
+
+struct FolderNode: Identifiable, Equatable {
+    var id: String { fullPath }
+    let name: String
+    let fullPath: String
+    var subfolders: [FolderNode]
+}
 
 struct TerminalCommand: Identifiable, Codable, Equatable {
     let id: UUID

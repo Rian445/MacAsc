@@ -1,6 +1,6 @@
 cask "macasc" do
   version "1.0.0"
-  sha256 "6ff7844dfa05fb6d2df3469e10fd13febc333e23c2bde863969aa55c8c5dc3e2"
+  sha256 "0a2c3524450a258295b27505c759cd18183da5f0d104532cd00a57f3532051f9"
 
   url "https://github.com/Rian445/MacAsc/releases/download/APP/Mac_ASC.dmg"
   name "Mac ASC"

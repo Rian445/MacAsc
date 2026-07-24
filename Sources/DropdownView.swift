@@ -44,6 +44,15 @@ struct DropdownView: View {
     @State private var chatInputText = ""
     @State private var isDraggingFolderOver = false
     
+    // Sort Mode State
+    @State private var isCommandSortActive = false
+    @State private var isNoteSortActive = false
+    
+    // Folder Delete State
+    @State private var folderToDelete: String? = nil
+    @State private var isDeletingCommandFolder: Bool = true
+    @State private var showDeleteFolderDialog = false
+    
     // Settings Navigation State
     @State private var showSettings = false
     @State private var settingsActiveTab = 0 // 0 = About, 1 = Tweak
@@ -278,6 +287,36 @@ struct DropdownView: View {
             }
         } message: { targetNote in
             Text("This action cannot be undone.")
+        }
+        .confirmationDialog(
+            "Delete Folder '\(folderToDelete ?? "")'?",
+            isPresented: $showDeleteFolderDialog
+        ) {
+            Button("Uncategorize Items", role: .none) {
+                if let folder = folderToDelete {
+                    if isDeletingCommandFolder {
+                        viewModel.deleteCommandFolder(folder, deleteContents: false)
+                    } else {
+                        viewModel.deleteNoteFolder(folder, deleteContents: false)
+                    }
+                }
+                folderToDelete = nil
+            }
+            Button("Delete Folder & All Contents", role: .destructive) {
+                if let folder = folderToDelete {
+                    if isDeletingCommandFolder {
+                        viewModel.deleteCommandFolder(folder, deleteContents: true)
+                    } else {
+                        viewModel.deleteNoteFolder(folder, deleteContents: true)
+                    }
+                }
+                folderToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                folderToDelete = nil
+            }
+        } message: {
+            Text("Choose whether to keep items (uncategorize) or delete all commands/notes inside this folder.")
         }
         .onAppear {
             viewModel.startMonitoringRunningCommands()
@@ -1537,12 +1576,13 @@ extension DropdownView {
                                 .foregroundColor(.white)
                                 .font(.system(size: 12))
                             
-                            let existingFolders = Array(Set(viewModel.customCommands.compactMap { $0.folder })).filter { !$0.isEmpty }.sorted()
-                            if !existingFolders.isEmpty {
+                            let folderTree = viewModel.getCommandFolderTree()
+                            let formattedFolders = viewModel.getFormattedFolderPaths(folderTree)
+                            if !formattedFolders.isEmpty {
                                 Menu {
-                                    ForEach(existingFolders, id: \.self) { folder in
-                                        Button(folder) {
-                                            newCommandFolder = folder
+                                    ForEach(formattedFolders, id: \.path) { item in
+                                        Button(item.label) {
+                                            newCommandFolder = item.path
                                         }
                                     }
                                 } label: {
@@ -1648,6 +1688,54 @@ extension DropdownView {
                     Spacer()
                     
                     if !viewModel.customCommands.isEmpty {
+                        let allCommandFolderPaths = getAllFolderPaths(from: viewModel.getCommandFolderTree())
+                        let areAllCommandFoldersCollapsed = !allCommandFolderPaths.isEmpty && allCommandFolderPaths.allSatisfy { collapsedFolders.contains($0) }
+                        
+                        if !allCommandFolderPaths.isEmpty {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if areAllCommandFoldersCollapsed {
+                                        collapsedFolders.removeAll()
+                                    } else {
+                                        collapsedFolders = Set(allCommandFolderPaths)
+                                    }
+                                }
+                            }) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: areAllCommandFoldersCollapsed ? "chevron.down.circle" : "chevron.up.circle")
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text(areAllCommandFoldersCollapsed ? "Expand All" : "Collapse")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            .help(areAllCommandFoldersCollapsed ? "Expand all folders" : "Collapse all folders")
+                        }
+                        
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isCommandSortActive.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isCommandSortActive ? "checkmark.circle.fill" : "arrow.up.arrow.down")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(isCommandSortActive ? "Done" : "Sort")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(isCommandSortActive ? Color.blue : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        
                         Button(action: {
                             viewModel.stopAllRunningCommands()
                         }) {
@@ -1680,7 +1768,7 @@ extension DropdownView {
                     .background(Color.white.opacity(0.02))
                     .cornerRadius(10)
                 } else {
-                    let folders = Array(Set(viewModel.customCommands.compactMap { $0.folder })).sorted()
+                    let folderTree = viewModel.getCommandFolderTree()
                     let uncategorized = viewModel.customCommands.filter { $0.folder == nil || $0.folder?.isEmpty == true }
                     
                     VStack(alignment: .leading, spacing: 10) {
@@ -1693,62 +1781,23 @@ extension DropdownView {
                             }
                         }
                         
-                        // Folder Groupings
-                        ForEach(folders, id: \.self) { folder in
-                            let folderCmds = viewModel.customCommands.filter { $0.folder == folder }
-                            let isCollapsed = collapsedFolders.contains(folder)
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        if isCollapsed {
-                                            collapsedFolders.remove(folder)
-                                        } else {
-                                            collapsedFolders.insert(folder)
-                                        }
-                                    }
-                                }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.secondary)
-                                        
-                                        Image(systemName: "folder.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.yellow.opacity(0.85))
-                                        
-                                        Text(folder)
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.secondary)
-                                        
-                                        Spacer()
-                                        
-                                        Text("\(folderCmds.count)")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color.white.opacity(0.08))
-                                            .cornerRadius(4)
-                                    }
-                                    .padding(.vertical, 4)
-                                    .padding(.horizontal, 6)
-                                    .background(Color.white.opacity(0.02))
-                                    .cornerRadius(6)
-                                    .contentShape(Rectangle())
+                        // Folder Tree Groupings
+                        ForEach(folderTree) { rootNode in
+                            CommandFolderNodeView(
+                                viewModel: viewModel,
+                                node: rootNode,
+                                level: 0,
+                                collapsedFolders: $collapsedFolders,
+                                isCommandSortActive: isCommandSortActive,
+                                onDeleteFolder: { path in
+                                    folderToDelete = path
+                                    isDeletingCommandFolder = true
+                                    showDeleteFolderDialog = true
+                                },
+                                commandRowBuilder: { cmd in
+                                    commandRow(for: cmd)
                                 }
-                                .buttonStyle(.plain)
-                                
-                                if !isCollapsed {
-                                    VStack(spacing: 6) {
-                                        ForEach(folderCmds) { cmd in
-                                            commandRow(for: cmd)
-                                        }
-                                    }
-                                    .padding(.leading, 12)
-                                }
-                            }
+                            )
                         }
                     }
                 }
@@ -1797,6 +1846,43 @@ extension DropdownView {
             .contentShape(Rectangle())
             .onTapGesture {
                 viewModel.runCustomCommand(cmd)
+            }
+            
+            if isCommandSortActive {
+                let groupCmds = viewModel.customCommands.filter { $0.folder == cmd.folder }
+                let cmdIdx = groupCmds.firstIndex(where: { $0.id == cmd.id }) ?? 0
+                
+                HStack(spacing: 2) {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            viewModel.moveCommandUp(id: cmd.id)
+                        }
+                    }) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(cmdIdx > 0 ? .white : .secondary.opacity(0.3))
+                            .padding(4)
+                            .background(Color.white.opacity(cmdIdx > 0 ? 0.1 : 0.02))
+                            .cornerRadius(4)
+                    }
+                    .disabled(cmdIdx == 0)
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            viewModel.moveCommandDown(id: cmd.id)
+                        }
+                    }) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(cmdIdx < groupCmds.count - 1 ? .white : .secondary.opacity(0.3))
+                            .padding(4)
+                            .background(Color.white.opacity(cmdIdx < groupCmds.count - 1 ? 0.1 : 0.02))
+                            .cornerRadius(4)
+                    }
+                    .disabled(cmdIdx == groupCmds.count - 1)
+                    .buttonStyle(.plain)
+                }
             }
             
             if viewModel.runningCommandIds.contains(cmd.id) {
@@ -1916,12 +2002,13 @@ extension DropdownView {
                                 .foregroundColor(.white)
                                 .font(.system(size: 12))
                             
-                            let existingFolders = Array(Set(viewModel.quickNotes.compactMap { $0.folder })).filter { !$0.isEmpty }.sorted()
-                            if !existingFolders.isEmpty {
+                            let folderTree = viewModel.getNoteFolderTree()
+                            let formattedFolders = viewModel.getFormattedFolderPaths(folderTree)
+                            if !formattedFolders.isEmpty {
                                 Menu {
-                                    ForEach(existingFolders, id: \.self) { folder in
-                                        Button(folder) {
-                                            newNoteFolder = folder
+                                    ForEach(formattedFolders, id: \.path) { item in
+                                        Button(item.label) {
+                                            newNoteFolder = item.path
                                         }
                                     }
                                 } label: {
@@ -2007,10 +2094,65 @@ extension DropdownView {
             
             // Saved Notes List
             VStack(alignment: .leading, spacing: 10) {
-                Text("Saved Notes")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
+                HStack {
+                    Text("Saved Notes")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 2)
+                    
+                    Spacer()
+                    
+                    if !viewModel.quickNotes.isEmpty {
+                        let allNoteFolderPaths = getAllFolderPaths(from: viewModel.getNoteFolderTree())
+                        let areAllNoteFoldersCollapsed = !allNoteFolderPaths.isEmpty && allNoteFolderPaths.allSatisfy { collapsedNotesFolders.contains($0) }
+                        
+                        if !allNoteFolderPaths.isEmpty {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if areAllNoteFoldersCollapsed {
+                                        collapsedNotesFolders.removeAll()
+                                    } else {
+                                        collapsedNotesFolders = Set(allNoteFolderPaths)
+                                    }
+                                }
+                            }) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: areAllNoteFoldersCollapsed ? "chevron.down.circle" : "chevron.up.circle")
+                                        .font(.system(size: 9, weight: .bold))
+                                    Text(areAllNoteFoldersCollapsed ? "Expand All" : "Collapse")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            .help(areAllNoteFoldersCollapsed ? "Expand all folders" : "Collapse all folders")
+                        }
+                        
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isNoteSortActive.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isNoteSortActive ? "checkmark.circle.fill" : "arrow.up.arrow.down")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(isNoteSortActive ? "Done" : "Sort")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(isNoteSortActive ? Color.blue : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 
                 if viewModel.quickNotes.isEmpty {
                     HStack {
@@ -2024,7 +2166,7 @@ extension DropdownView {
                     .background(Color.white.opacity(0.02))
                     .cornerRadius(10)
                 } else {
-                    let folders = Array(Set(viewModel.quickNotes.compactMap { $0.folder })).sorted()
+                    let folderTree = viewModel.getNoteFolderTree()
                     let uncategorized = viewModel.quickNotes.filter { $0.folder == nil || $0.folder?.isEmpty == true }
                     
                     VStack(alignment: .leading, spacing: 10) {
@@ -2037,62 +2179,23 @@ extension DropdownView {
                             }
                         }
                         
-                        // Folder Groupings
-                        ForEach(folders, id: \.self) { folder in
-                            let folderNotes = viewModel.quickNotes.filter { $0.folder == folder }
-                            let isCollapsed = collapsedNotesFolders.contains(folder)
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        if isCollapsed {
-                                            collapsedNotesFolders.remove(folder)
-                                        } else {
-                                            collapsedNotesFolders.insert(folder)
-                                        }
-                                    }
-                                }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.secondary)
-                                        
-                                        Image(systemName: "folder.fill")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.orange.opacity(0.85))
-                                        
-                                        Text(folder)
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.secondary)
-                                        
-                                        Spacer()
-                                        
-                                        Text("\(folderNotes.count)")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundColor(.secondary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color.white.opacity(0.08))
-                                            .cornerRadius(4)
-                                    }
-                                    .padding(.vertical, 4)
-                                    .padding(.horizontal, 6)
-                                    .background(Color.white.opacity(0.02))
-                                    .cornerRadius(6)
-                                    .contentShape(Rectangle())
+                        // Folder Tree Groupings
+                        ForEach(folderTree) { rootNode in
+                            NoteFolderNodeView(
+                                viewModel: viewModel,
+                                node: rootNode,
+                                level: 0,
+                                collapsedNotesFolders: $collapsedNotesFolders,
+                                isNoteSortActive: isNoteSortActive,
+                                onDeleteFolder: { path in
+                                    folderToDelete = path
+                                    isDeletingCommandFolder = false
+                                    showDeleteFolderDialog = true
+                                },
+                                noteRowBuilder: { note in
+                                    noteRow(for: note)
                                 }
-                                .buttonStyle(.plain)
-                                
-                                if !isCollapsed {
-                                    VStack(spacing: 8) {
-                                        ForEach(folderNotes) { note in
-                                            noteRow(for: note)
-                                        }
-                                    }
-                                    .padding(.leading, 12)
-                                }
-                            }
+                            )
                         }
                     }
                 }
@@ -2121,6 +2224,43 @@ extension DropdownView {
             Spacer()
             
             HStack(spacing: 8) {
+                if isNoteSortActive {
+                    let groupNotes = viewModel.quickNotes.filter { $0.folder == note.folder }
+                    let noteIdx = groupNotes.firstIndex(where: { $0.id == note.id }) ?? 0
+                    
+                    HStack(spacing: 2) {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveNoteUp(id: note.id)
+                            }
+                        }) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(noteIdx > 0 ? .white : .secondary.opacity(0.3))
+                                .padding(4)
+                                .background(Color.white.opacity(noteIdx > 0 ? 0.1 : 0.02))
+                                .cornerRadius(4)
+                        }
+                        .disabled(noteIdx == 0)
+                        .buttonStyle(.plain)
+
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveNoteDown(id: note.id)
+                            }
+                        }) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(noteIdx < groupNotes.count - 1 ? .white : .secondary.opacity(0.3))
+                                .padding(4)
+                                .background(Color.white.opacity(noteIdx < groupNotes.count - 1 ? 0.1 : 0.02))
+                                .cornerRadius(4)
+                        }
+                        .disabled(noteIdx == groupNotes.count - 1)
+                        .buttonStyle(.plain)
+                    }
+                }
+                
                 // Copy Content Button
                 Button(action: {
                     NSPasteboard.general.clearContents()
@@ -2784,5 +2924,360 @@ struct ChatBubble: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Nested Folder Tree View Helpers
+
+private func getAllFolderPaths(from nodes: [FolderNode]) -> [String] {
+    var result: [String] = []
+    for n in nodes {
+        result.append(n.fullPath)
+        result.append(contentsOf: getAllFolderPaths(from: n.subfolders))
+    }
+    return result
+}
+
+struct CommandFolderNodeView<CommandRow: View>: View {
+    @ObservedObject var viewModel: StorageViewModel
+    let node: FolderNode
+    let level: Int
+    @Binding var collapsedFolders: Set<String>
+    let isCommandSortActive: Bool
+    let onDeleteFolder: (String) -> Void
+    let commandRowBuilder: (TerminalCommand) -> CommandRow
+    
+    @State private var isDropTargeted = false
+
+    var body: some View {
+        let isCollapsed = collapsedFolders.contains(node.fullPath)
+        let folderCmds = viewModel.customCommands.filter { $0.folder == node.fullPath }
+        let totalCount = countTotalItems(node)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if isCollapsed {
+                            collapsedFolders.remove(node.fullPath)
+                        } else {
+                            collapsedFolders.insert(node.fullPath)
+                        }
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                        
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow.opacity(0.85))
+                        
+                        Text(node.name)
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Text("\(totalCount)")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(4)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    onDeleteFolder(node.fullPath)
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.red.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Delete folder '\(node.name)'")
+                
+                if isCommandSortActive {
+                    HStack(spacing: 2) {
+                        if level > 0 {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    viewModel.unnestCommandFolder(node.fullPath)
+                                }
+                            }) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.yellow)
+                                    .padding(4)
+                                    .background(Color.white.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Move out of parent folder")
+                        }
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveCommandFolderUp(name: node.fullPath)
+                            }
+                        }) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(4)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveCommandFolderDown(name: node.fullPath)
+                            }
+                        }) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(4)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(Color.white.opacity(isDropTargeted ? 0.15 : 0.02))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isDropTargeted ? Color.blue : Color.clear, lineWidth: 1.5)
+            )
+            .onDrag {
+                guard isCommandSortActive else { return NSItemProvider() }
+                return NSItemProvider(object: node.fullPath as NSString)
+            }
+            .onDrop(of: [.text], isTargeted: $isDropTargeted) { providers in
+                guard isCommandSortActive else { return false }
+                for provider in providers {
+                    _ = provider.loadObject(ofClass: String.self) { sourcePath, _ in
+                        if let sourcePath = sourcePath, sourcePath != node.fullPath {
+                            DispatchQueue.main.async {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    viewModel.nestCommandFolder(sourcePath: sourcePath, targetParentPath: node.fullPath)
+                                }
+                            }
+                        }
+                    }
+                }
+                return true
+            }
+            
+            if !isCollapsed {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(folderCmds) { cmd in
+                        commandRowBuilder(cmd)
+                    }
+                    
+                    ForEach(node.subfolders) { childNode in
+                        CommandFolderNodeView(
+                            viewModel: viewModel,
+                            node: childNode,
+                            level: level + 1,
+                            collapsedFolders: $collapsedFolders,
+                            isCommandSortActive: isCommandSortActive,
+                            onDeleteFolder: onDeleteFolder,
+                            commandRowBuilder: commandRowBuilder
+                        )
+                    }
+                }
+                .padding(.leading, 12)
+            }
+        }
+    }
+
+    private func countTotalItems(_ n: FolderNode) -> Int {
+        let direct = viewModel.customCommands.filter { $0.folder == n.fullPath }.count
+        let sub = n.subfolders.reduce(0) { $0 + countTotalItems($1) }
+        return direct + sub
+    }
+}
+
+struct NoteFolderNodeView<NoteRow: View>: View {
+    @ObservedObject var viewModel: StorageViewModel
+    let node: FolderNode
+    let level: Int
+    @Binding var collapsedNotesFolders: Set<String>
+    let isNoteSortActive: Bool
+    let onDeleteFolder: (String) -> Void
+    let noteRowBuilder: (QuickNote) -> NoteRow
+    
+    @State private var isDropTargeted = false
+
+    var body: some View {
+        let isCollapsed = collapsedNotesFolders.contains(node.fullPath)
+        let folderNotes = viewModel.quickNotes.filter { $0.folder == node.fullPath }
+        let totalCount = countTotalItems(node)
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if isCollapsed {
+                            collapsedNotesFolders.remove(node.fullPath)
+                        } else {
+                            collapsedNotesFolders.insert(node.fullPath)
+                        }
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.secondary)
+                        
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange.opacity(0.85))
+                        
+                        Text(node.name)
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Text("\(totalCount)")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(4)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    onDeleteFolder(node.fullPath)
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.red.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Delete folder '\(node.name)'")
+                
+                if isNoteSortActive {
+                    HStack(spacing: 2) {
+                        if level > 0 {
+                            Button(action: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    viewModel.unnestNoteFolder(node.fullPath)
+                                }
+                            }) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.orange)
+                                    .padding(4)
+                                    .background(Color.white.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Move out of parent folder")
+                        }
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveNoteFolderUp(name: node.fullPath)
+                            }
+                        }) {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(4)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                viewModel.moveNoteFolderDown(name: node.fullPath)
+                            }
+                        }) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(4)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(Color.white.opacity(isDropTargeted ? 0.15 : 0.02))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isDropTargeted ? Color.blue : Color.clear, lineWidth: 1.5)
+            )
+            .onDrag {
+                guard isNoteSortActive else { return NSItemProvider() }
+                return NSItemProvider(object: node.fullPath as NSString)
+            }
+            .onDrop(of: [.text], isTargeted: $isDropTargeted) { providers in
+                guard isNoteSortActive else { return false }
+                for provider in providers {
+                    _ = provider.loadObject(ofClass: String.self) { sourcePath, _ in
+                        if let sourcePath = sourcePath, sourcePath != node.fullPath {
+                            DispatchQueue.main.async {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    viewModel.nestNoteFolder(sourcePath: sourcePath, targetParentPath: node.fullPath)
+                                }
+                            }
+                        }
+                    }
+                }
+                return true
+            }
+            
+            if !isCollapsed {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(folderNotes) { note in
+                        noteRowBuilder(note)
+                    }
+                    
+                    ForEach(node.subfolders) { childNode in
+                        NoteFolderNodeView(
+                            viewModel: viewModel,
+                            node: childNode,
+                            level: level + 1,
+                            collapsedNotesFolders: $collapsedNotesFolders,
+                            isNoteSortActive: isNoteSortActive,
+                            onDeleteFolder: onDeleteFolder,
+                            noteRowBuilder: noteRowBuilder
+                        )
+                    }
+                }
+                .padding(.leading, 12)
+            }
+        }
+    }
+
+    private func countTotalItems(_ n: FolderNode) -> Int {
+        let direct = viewModel.quickNotes.filter { $0.folder == n.fullPath }.count
+        let sub = n.subfolders.reduce(0) { $0 + countTotalItems($1) }
+        return direct + sub
     }
 }

@@ -9,9 +9,9 @@ Last Updated: July 2, 2026
 ## 🔒 1. 100% Offline & Local Operation
 All operations are executed entirely on your machine:
 * **Storage Breakdown Analysis**: The directory size calculation is handled locally using native macOS system calls (`FileManager`).
-* **Pinned Folders & Notes**: Paths to folders you pin, quick notes you write, and their folder organization structures are saved locally in the standard macOS user preferences (`UserDefaults`) and never shared.
-* **Settings Backup**: When exporting settings backups, the app encodes your commands, notes, pins, active model selection, favorite models list, and AI history into a local JSON file of your choosing. No third-party servers or telemetry are involved in the backup process.
-* **Custom Terminal Commands**: Your shell shortcuts are stored locally on your device's preferences and executed using standard macOS command processes.
+* **Pinned Folders, Notes & Nested Folders**: Paths to folders you pin, quick notes you write, nested subfolder path trees (`Parent/Child`), and custom manual sort orders are saved locally in standard macOS user preferences (`UserDefaults`) and never shared.
+* **Settings Backup**: When exporting settings backups, the app encodes your commands, notes, nested subfolder structures, tab sorting order (`DashboardTabOrder`), folder sort orders (`CustomCommandFolderOrder`, `QuickNoteFolderOrder`), pins, active model selection, favorite models list, and AI history into a local JSON file of your choosing. No third-party servers or telemetry are involved in the backup process.
+* **Custom Terminal Commands**: Your shell shortcuts and window tags are stored locally on your device's preferences and executed using standard macOS command processes.
 
 ## 🤖 2. Local AI Chat Integration (opencode)
 * **Subprocess Execution**: The **Chat with AI** panel communicates with the locally installed `opencode` command-line tool. It spawns `opencode` as a background subprocess using your standard user account privileges.
