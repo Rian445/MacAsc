@@ -32,6 +32,7 @@ class StorageViewModel: ObservableObject {
     @Published var enableCustomCommands = true
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
+    @Published var tabOrder: [Int] = [0, 1, 2, 3]
     @Published var availableModels: [String] = []
     @Published var selectedModel: String = ""
     @Published var favoriteModels: [String] = []
@@ -72,12 +73,48 @@ class StorageViewModel: ObservableObject {
         refresh()
     }
     
-    /// Loads the Tweak settings for enabling/disabling dashboard tabs
+    /// Loads the Tweak settings for enabling/disabling dashboard tabs and custom tab ordering
     private func loadTweakSettings() {
         self.enableDiskInsight = UserDefaults.standard.object(forKey: "TweakDiskInsight") as? Bool ?? true
         self.enableCustomCommands = UserDefaults.standard.object(forKey: "TweakCustomCommands") as? Bool ?? true
         self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
         self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
+        
+        if let savedOrder = UserDefaults.standard.array(forKey: "DashboardTabOrder") as? [Int], !savedOrder.isEmpty {
+            var order = savedOrder.filter { [0, 1, 2, 3].contains($0) }
+            for id in [0, 1, 2, 3] {
+                if !order.contains(id) { order.append(id) }
+            }
+            self.tabOrder = order
+        } else {
+            self.tabOrder = [0, 1, 2, 3]
+        }
+    }
+    
+    /// Moves a tab up in the display order
+    func moveTabUp(at index: Int) {
+        guard index > 0 && index < tabOrder.count else { return }
+        tabOrder.swapAt(index, index - 1)
+        saveTabOrder()
+    }
+    
+    /// Moves a tab down in the display order
+    func moveTabDown(at index: Int) {
+        guard index >= 0 && index < tabOrder.count - 1 else { return }
+        tabOrder.swapAt(index, index + 1)
+        saveTabOrder()
+    }
+    
+    /// Resets tab display order to default [0, 1, 2, 3]
+    func resetTabOrder() {
+        tabOrder = [0, 1, 2, 3]
+        saveTabOrder()
+    }
+    
+    /// Persists tabOrder to UserDefaults
+    func saveTabOrder() {
+        UserDefaults.standard.set(tabOrder, forKey: "DashboardTabOrder")
+        self.objectWillChange.send()
     }
 
     /// Loads the selected AI model and starts loading all available models
@@ -1240,6 +1277,7 @@ class StorageViewModel: ObservableObject {
         "TweakCustomCommands",
         "TweakQuickNote",
         "TweakChatWithAi",
+        "DashboardTabOrder",
         "PinnedFolders",
         "CustomCommands",
         "QuickNotes",

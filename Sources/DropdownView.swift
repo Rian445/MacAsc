@@ -40,6 +40,7 @@ struct DropdownView: View {
     
     // AI Chat State
     @State private var tabPageIndex: Int = 0
+    @State private var isBackwardSlide: Bool = false
     @State private var chatInputText = ""
     @State private var isDraggingFolderOver = false
     
@@ -65,71 +66,84 @@ struct DropdownView: View {
                     HStack(spacing: 8) {
                         if enabledTabs.count > 2 {
                             Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    tabPageIndex = 0
-                                    // If the current active tab is in page 1, set it to the first active tab in page 0
-                                    if !enabledTabs.prefix(2).contains(where: { $0.id == currentTopTab }) {
-                                        currentTopTab = enabledTabs[0].id
+                                isBackwardSlide = true
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    let pageCount = max(1, (enabledTabs.count + 1) / 2)
+                                    let newPageIndex = (tabPageIndex - 1 + pageCount) % pageCount
+                                    tabPageIndex = newPageIndex
+                                    
+                                    let pageStart = newPageIndex * 2
+                                    let pageTabs = Array(enabledTabs.dropFirst(pageStart).prefix(2))
+                                    if !pageTabs.contains(where: { $0.id == currentTopTab }) {
+                                        if let firstTab = pageTabs.first {
+                                            currentTopTab = firstTab.id
+                                        }
                                     }
                                 }
                             }) {
                                 Image(systemName: "chevron.left")
                                     .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(tabPageIndex == 1 ? .white : .secondary.opacity(0.3))
+                                    .foregroundColor(.white)
                                     .padding(5)
-                                    .background(Color.white.opacity(tabPageIndex == 1 ? 0.08 : 0.02))
+                                    .background(Color.white.opacity(0.08))
                                     .cornerRadius(6)
                             }
-                            .disabled(tabPageIndex == 0)
                             .buttonStyle(.plain)
                         }
                         
                         HStack(spacing: 4) {
                             if enabledTabs.count > 2 {
-                                if tabPageIndex == 0 {
-                                    ForEach(Array(enabledTabs.prefix(2))) { tab in
-                                        TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
+                                let pageStart = tabPageIndex * 2
+                                let visibleTabs = Array(enabledTabs.dropFirst(pageStart).prefix(2))
+                                ForEach(visibleTabs) { tab in
+                                    TabButton(title: tab.title, isSelected: safeTopTab == tab.id, accentColor: tab.accentColor) {
+                                        withAnimation(.easeInOut(duration: 0.22)) {
                                             currentTopTab = tab.id
                                         }
-                                        .transition(.move(edge: .leading).combined(with: .opacity))
-                                    }
-                                } else {
-                                    ForEach(Array(enabledTabs.suffix(from: 2))) { tab in
-                                        TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
-                                            currentTopTab = tab.id
-                                        }
-                                        .transition(.move(edge: .trailing).combined(with: .opacity))
                                     }
                                 }
                             } else {
                                 // If 2 or fewer tabs, just show them in a simple row
                                 ForEach(enabledTabs) { tab in
-                                    TabButton(title: tab.title, isSelected: safeTopTab == tab.id) {
-                                        currentTopTab = tab.id
+                                    TabButton(title: tab.title, isSelected: safeTopTab == tab.id, accentColor: tab.accentColor) {
+                                        withAnimation(.easeInOut(duration: 0.22)) {
+                                            currentTopTab = tab.id
+                                        }
                                     }
                                 }
                             }
                         }
                         .frame(maxWidth: .infinity)
+                        .id(tabPageIndex)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: isBackwardSlide ? .leading : .trailing).combined(with: .opacity),
+                            removal: .move(edge: isBackwardSlide ? .trailing : .leading).combined(with: .opacity)
+                        ))
                         
                         if enabledTabs.count > 2 {
                             Button(action: {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    tabPageIndex = 1
-                                    // If the current active tab is in page 0, set it to the first active tab in page 1
-                                    if !enabledTabs.suffix(from: 2).contains(where: { $0.id == currentTopTab }) {
-                                        currentTopTab = enabledTabs[2].id
+                                isBackwardSlide = false
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    let pageCount = max(1, (enabledTabs.count + 1) / 2)
+                                    let newPageIndex = (tabPageIndex + 1) % pageCount
+                                    tabPageIndex = newPageIndex
+                                    
+                                    let pageStart = newPageIndex * 2
+                                    let pageTabs = Array(enabledTabs.dropFirst(pageStart).prefix(2))
+                                    if !pageTabs.contains(where: { $0.id == currentTopTab }) {
+                                        if let firstTab = pageTabs.first {
+                                            currentTopTab = firstTab.id
+                                        }
                                     }
                                 }
                             }) {
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(tabPageIndex == 0 ? .white : .secondary.opacity(0.3))
+                                    .foregroundColor(.white)
                                     .padding(5)
-                                    .background(Color.white.opacity(tabPageIndex == 0 ? 0.08 : 0.02))
+                                    .background(Color.white.opacity(0.08))
                                     .cornerRadius(6)
                             }
-                            .disabled(tabPageIndex == 1)
                             .buttonStyle(.plain)
                         }
                     }
@@ -193,6 +207,10 @@ struct DropdownView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .frame(maxHeight: .infinity)
+                        .background(Color.black.opacity(0.001))
+                        .onAppear {
+                            viewModel.loadAvailableModels()
+                        }
                 } else {
                     // Fallback empty view if all tabs disabled
                     VStack(spacing: 12) {
@@ -275,23 +293,27 @@ struct DropdownView: View {
     struct AppTab: Identifiable, Equatable {
         let id: Int
         let title: String
+        let icon: String
+        let accentColor: Color
     }
     
     var activeTabs: [AppTab] {
-        var tabs: [AppTab] = []
-        if viewModel.enableDiskInsight {
-            tabs.append(AppTab(id: 0, title: "Disk Insight"))
+        let allTabsMap: [Int: AppTab] = [
+            0: AppTab(id: 0, title: "Disk Insight", icon: "chart.pie.fill", accentColor: .cyan),
+            1: AppTab(id: 1, title: "Custom Commands", icon: "terminal.fill", accentColor: .blue),
+            2: AppTab(id: 2, title: "Quick Note", icon: "note.text", accentColor: .yellow),
+            3: AppTab(id: 3, title: "Chat with AI", icon: "cpu.fill", accentColor: .purple)
+        ]
+        
+        var result: [AppTab] = []
+        for id in viewModel.tabOrder {
+            guard let tab = allTabsMap[id] else { continue }
+            if id == 0 && viewModel.enableDiskInsight { result.append(tab) }
+            else if id == 1 && viewModel.enableCustomCommands { result.append(tab) }
+            else if id == 2 && viewModel.enableQuickNotes { result.append(tab) }
+            else if id == 3 && viewModel.enableAiChat { result.append(tab) }
         }
-        if viewModel.enableCustomCommands {
-            tabs.append(AppTab(id: 1, title: "Custom Commands"))
-        }
-        if viewModel.enableQuickNotes {
-            tabs.append(AppTab(id: 2, title: "Quick Note"))
-        }
-        if viewModel.enableAiChat {
-            tabs.append(AppTab(id: 3, title: "Chat with AI"))
-        }
-        return tabs
+        return result
     }
     
     var safeTopTab: Int {
@@ -323,6 +345,31 @@ struct DropdownView: View {
         }
     }
     
+    private func tabInfoForId(_ id: Int) -> (title: String, icon: String, color: Color) {
+        switch id {
+        case 0: return ("Disk Insight", "chart.pie.fill", .cyan)
+        case 1: return ("Custom Commands", "terminal.fill", .blue)
+        case 2: return ("Quick Note", "note.text", .yellow)
+        case 3: return ("Chat with AI", "cpu.fill", .purple)
+        default: return ("Tab", "square.fill", .white)
+        }
+    }
+    
+    private func bindingForTabId(_ id: Int) -> Binding<Bool> {
+        switch id {
+        case 0:
+            return Binding(get: { viewModel.enableDiskInsight }, set: { viewModel.setTweak("TweakDiskInsight", value: $0) })
+        case 1:
+            return Binding(get: { viewModel.enableCustomCommands }, set: { viewModel.setTweak("TweakCustomCommands", value: $0) })
+        case 2:
+            return Binding(get: { viewModel.enableQuickNotes }, set: { viewModel.setTweak("TweakQuickNote", value: $0) })
+        case 3:
+            return Binding(get: { viewModel.enableAiChat }, set: { viewModel.setTweak("TweakChatWithAi", value: $0) })
+        default:
+            return .constant(true)
+        }
+    }
+    
     private var settingsView: some View {
         VStack(spacing: 0) {
             Picker("", selection: $settingsActiveTab) {
@@ -346,49 +393,97 @@ struct DropdownView: View {
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("DASHBOARD TWEAKS")
+                        Text("TAB ORDER & DISPLAY TWEAKS")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(.secondary)
                             .padding(.top, 4)
                         
-                        Text("Choose which components are displayed on the home dashboard screen:")
+                        Text("Use ▲ and ▼ arrows to reorder navigation tabs, or toggle switches to show/hide them:")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                             .padding(.bottom, 4)
                         
-                        VStack(spacing: 10) {
-                            tweakToggleRow(title: "Disk Insight", icon: "chart.pie.fill", color: .blue, isOn: Binding(
-                                get: { viewModel.enableDiskInsight },
-                                set: { viewModel.setTweak("TweakDiskInsight", value: $0) }
-                            ))
-                            
-                            Divider()
-                                .background(Color.white.opacity(0.06))
-                            
-                            tweakToggleRow(title: "Custom Commands", icon: "terminal.fill", color: .purple, isOn: Binding(
-                                get: { viewModel.enableCustomCommands },
-                                set: { viewModel.setTweak("TweakCustomCommands", value: $0) }
-                            ))
-                            
-                            Divider()
-                                .background(Color.white.opacity(0.06))
-                            
-                            tweakToggleRow(title: "Quick Note", icon: "note.text", color: .orange, isOn: Binding(
-                                get: { viewModel.enableQuickNotes },
-                                set: { viewModel.setTweak("TweakQuickNote", value: $0) }
-                            ))
-                            
-                            Divider()
-                                .background(Color.white.opacity(0.06))
-                            
-                            tweakToggleRow(title: "Chat with AI", icon: "cpu.fill", color: .green, isOn: Binding(
-                                get: { viewModel.enableAiChat },
-                                set: { viewModel.setTweak("TweakChatWithAi", value: $0) }
-                            ))
+                        VStack(spacing: 8) {
+                            ForEach(Array(viewModel.tabOrder.enumerated()), id: \.element) { index, tabId in
+                                let tabInfo = tabInfoForId(tabId)
+                                HStack(spacing: 8) {
+                                    Image(systemName: tabInfo.icon)
+                                        .foregroundColor(tabInfo.color)
+                                        .font(.system(size: 11))
+                                        .frame(width: 18)
+                                    
+                                    Text(tabInfo.title)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    
+                                    Spacer()
+                                    
+                                    // Move Up & Down controls
+                                    HStack(spacing: 3) {
+                                        Button(action: {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                                viewModel.moveTabUp(at: index)
+                                            }
+                                        }) {
+                                            Image(systemName: "chevron.up")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(index > 0 ? .white : .secondary.opacity(0.3))
+                                                .padding(4)
+                                                .background(Color.white.opacity(index > 0 ? 0.08 : 0.02))
+                                                .cornerRadius(4)
+                                        }
+                                        .disabled(index == 0)
+                                        .buttonStyle(.plain)
+                                        
+                                        Button(action: {
+                                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                                viewModel.moveTabDown(at: index)
+                                            }
+                                        }) {
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundColor(index < viewModel.tabOrder.count - 1 ? .white : .secondary.opacity(0.3))
+                                                .padding(4)
+                                                .background(Color.white.opacity(index < viewModel.tabOrder.count - 1 ? 0.08 : 0.02))
+                                                .cornerRadius(4)
+                                        }
+                                        .disabled(index == viewModel.tabOrder.count - 1)
+                                        .buttonStyle(.plain)
+                                    }
+                                    
+                                    Toggle("", isOn: bindingForTabId(tabId))
+                                        .toggleStyle(.switch)
+                                        .labelsHidden()
+                                        .scaleEffect(0.7)
+                                        .frame(width: 28, height: 16)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(tabInfo.color.opacity(0.08))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(tabInfo.color.opacity(0.25), lineWidth: 1)
+                                )
+                            }
                         }
-                        .padding(10)
+                        .padding(8)
                         .background(Color.white.opacity(0.03))
                         .cornerRadius(8)
+                        
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                    viewModel.resetTabOrder()
+                                }
+                            }) {
+                                Label("Reset Tab Order", systemImage: "arrow.counterclockwise")
+                                    .font(.system(size: 9.5, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         
                         Text("Disabled features are hidden immediately from navigation tab bar.")
                             .font(.system(size: 9))
@@ -1261,6 +1356,7 @@ struct FileIconView: View {
 struct TabButton: View {
     let title: String
     let isSelected: Bool
+    var accentColor: Color = .white
     let action: () -> Void
     
     var body: some View {
@@ -1272,9 +1368,19 @@ struct TabButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.001))
+                    ZStack {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(accentColor.opacity(0.24))
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(accentColor.opacity(0.5), lineWidth: 1)
+                        } else {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.001))
+                        }
+                    }
                 )
+                .animation(.easeInOut(duration: 0.22), value: isSelected)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
