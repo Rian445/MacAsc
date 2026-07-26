@@ -190,6 +190,16 @@ class LocalAIEngine {
             do {
                 try process.run()
                 process.waitUntilExit()
+                
+                // Fallback if prompt echo marker was suppressed or formatted differently
+                if !isStreamStarted && !pendingBuffer.isEmpty {
+                    let cleaned = LocalAIEngine.cleanTokenText(pendingBuffer)
+                    if !cleaned.isEmpty {
+                        DispatchQueue.main.async {
+                            onToken(cleaned)
+                        }
+                    }
+                }
             } catch {
                 DispatchQueue.main.async {
                     onToken("\n[Inference Error: \(error.localizedDescription)]")
