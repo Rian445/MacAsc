@@ -1,6 +1,6 @@
 # Mac ASC
 
-Mac ASC is a premium, lightweight, and offline-locked macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, quick folder pinning with direct Finder navigation, custom shell script commands, quick note-taking, and a local AI assistant panel.
+Mac ASC is a premium, lightweight, and 100% offline-locked macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, quick folder pinning with direct Finder navigation, custom shell script commands, quick note-taking, and a native offline Local AI assistant panel.
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring absolute data privacy.
 
@@ -19,22 +19,27 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 ## ✨ Key Features
 
 * **🪟 Premium Glassmorphic UI**: Uses AppKit's native backdrop-blur transparency (`NSVisualEffectView` layered with a 45% dark opacity tint) to create a stunning, wallpaper-bleeding menu bar dropdown that respects light and dark modes dynamically.
-* **↔️ Tab Paging Slider**: Rebuilds the segmented header into a horizontal sliding window that displays exactly two tabs at a time. Use spring-animated chevrons (`<` and `>`) to navigate between pages:
+* **↔️ Tab Paging Slider**: Rebuilds the segmented header into a horizontal sliding window that displays two tabs at a time with direction-aware spring animations and infinite circular wrapping (`<` and `>`):
   * **Page 0**: *Disk Insight* & *Custom Commands*
   * **Page 1**: *Quick Note* & *Chat with AI*
-* **🤖 Chat with Local AI (opencode)**: A dedicated chat interface that communicates with your locally installed `opencode` command-line utility:
-  * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads (groupable under folders).
+* **🧠 Native Offline Local LLM (Google Gemma 270M)**: A dedicated 100% offline AI Chat panel powered by an embedded Apple Metal GPU-accelerated GGUF neural inference engine:
+  * **100% Plug-and-Play Offline**: Runs directly on your Mac's Metal GPU at **180 – 250+ tokens/second** without internet access or external CLI dependencies (`opencode`, `ollama`, or `python` NOT required).
+  * **Instruction-Tuned Model**: Uses the official `gemma-3-270m-it-Q8_0.gguf` model for smart, high-speed assistant responses, code generation, and Q&A.
+  * **Zero Idle Memory Footprint**: Spawns processes on-demand and terminates immediately upon output completion (`0 MB RAM` when idle).
+  * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
   * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
-  * **Context continuation**: Uses your local database session ID (scraped dynamically from log output) to continue specific conversation histories for follow-up questions.
-  * **Favorite Models & Provider Groupings**: An icon-only green CPU dropdown selector allows switching between models. Mark models as favorites for quick selection, or toggle "See All" to browse all models (queried dynamically from `opencode models`) grouped by their provider (e.g. google, deepseek, nvidia) in a flat, crash-free menu.
-  * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Context Path: <path>`) into your next query, allowing the AI to inspect files or folder contexts.
+  * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Context Path: <path>`) into your next query, allowing the Local AI to inspect files or folder contexts.
   * **Visual State Handoff**: The paperclip icon lights up in yellow (`paperclip.circle.fill`) when a file or directory is attached.
-  * **Terminal Handoff (Interactive Mode)**: Click the **Terminal** icon button to open a new macOS Terminal window running `opencode` with the active thread's session ID, model, and context folder preloaded.
-  * **System Actions Toggle (Optional)**: A toggle represented by a shield icon (`green` for safe/blocked mode, `red` for active/bypass mode) that enables passing the `--dangerously-skip-permissions` flag. This allows the AI to auto-approve tool execution requests (such as creating folders, writing code files, or running command-line scripts) locally on your Mac.
-  * **Clean Output Filtering**: Automatically filters out shell TUI progress loaders (`> build · ...`) and logs (`timestamp=...`), presenting clean text results.
   * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.
-  * **Stop AI Processing**: Cancel running queries mid-way, immediately terminating the background subprocess and releasing ports.
-  * **Dot Typing Indicator**: Features a pulsed three-dot typing loading view during background AI execution.
+  * **Stop AI Processing**: Cancel running queries mid-way, immediately terminating the background process and releasing ports/RAM.
+* **📁 Nested Subfolders & Tree Hierarchy**: Supports unlimited nested folder trees using forward-slash path strings (e.g. `DevOps/Docker` or `Work/Projects/Scripts`) across Custom Commands and Quick Notes. Subfolders render with visual tree indentation, recursive collapse/expand, and item count badges.
+* **🔃 Interactive Sort Mode & Drag-and-Drop Nesting**: Click the **Sort** button at the top of Saved Commands or Saved Notes to activate manual sorting mode:
+  * **Up / Down Arrow Controls**: Manually reorder folders, subfolders, and individual items up and down.
+  * **Drag-and-Drop Folder Nesting**: Drag any folder and drop it onto another folder to nest it inside (`Target Folder / Dragged Folder`).
+  * **Move Out / Un-nest (`[↰]`)**: Click the Move Out button on any nested subfolder to un-nest it out of its parent folder.
+  * **Strict Safety**: Drag-and-drop gesture interaction is strictly locked when Sort mode is off, preventing accidental folder moves during daily clicking.
+* **↔️ Expand / Collapse All**: A dedicated button beside the Sort button allows expanding or collapsing all folders across all nesting levels in a single click.
+* **🗑️ Safe Folder Deletion**: Delete folders directly using the minus button with a safety confirmation dialog giving you the choice to **Uncategorize Items** (keep commands/notes) or **Delete Folder & All Contents**.
 * **📊 Categorized Storage Breakdown**: Visualizes your storage allocations using multi-colored stacked progress bars. Breaks down space into:
   * 🔵 **Applications**
   * 🟣 **Developer Files** (build directories, caches)
@@ -44,15 +49,6 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **🔌 Multi-Drive Support**: Automatically detects and monitors external USB drives, SD cards, and thunderbolt disks. Scan categorized breakdowns and safely eject external volumes directly from the dropdown.
 * **📌 Folder Pinning & Size Tracker**: Select and pin custom directories to the dashboard. The application calculates directory sizes asynchronously in the background and provides single-click Finder access.
 * **📱 Interactive App List**: Automatically lists your top installed applications by size. Click "Other Apps" to expand and view the full list, or tap on any application to instantly locate it in Finder.
-* **🧹 Mole Cleaner Integration**: Automatically detects if the interactive CLI cleaning utility `mo` is installed. Allows launching it directly inside a new Terminal window with a single click, or guides you to the download page.
-* **📁 Nested Subfolders & Tree Hierarchy**: Supports unlimited nested folder trees using forward-slash path strings (e.g. `DevOps/Docker` or `Work/Projects/Scripts`) across Custom Commands and Quick Notes. Subfolders render with visual tree indentation, recursive collapse/expand, and item count badges.
-* **🔃 Interactive Sort Mode & Drag-and-Drop Nesting**: Click the **Sort** button at the top of Saved Commands or Saved Notes to activate manual sorting mode:
-  * **Up / Down Arrow Controls**: Manually reorder folders, subfolders, and individual items up and down.
-  * **Drag-and-Drop Folder Nesting**: Drag any folder and drop it onto another folder to nest it inside (`Target Folder / Dragged Folder`).
-  * **Move Out / Un-nest (`[↰]`)**: Click the Move Out button on any nested subfolder to un-nest it out of its parent folder.
-  * **Strict Safety**: Drag-and-drop gesture interaction is strictly locked when Sort mode is off, preventing accidental folder moves during daily clicking.
-* **↔️ Expand / Collapse All**: A dedicated button beside the Sort button allows expanding or collapsing all folders across all nesting levels in a single click.
-* **🗑️ Safe Folder Deletion**: Delete folders directly using the minus button with a safety confirmation dialog giving you the choice to **Uncategorize Items** (keep commands/notes) or **Delete Folder & All Contents**.
 * **⚙️ Main Window Settings & Tab Reordering**: A Settings icon button in the header opens preferences directly in the main window:
   * **About Page**: Lists developed details, ATS security specifications, and exact disk usage/preference sizes for the application.
   * **Dashboard Tweaks & Tab Reordering**: Toggle switches to show or hide dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) and manually reorder dashboard tabs using Up/Down controls.
@@ -67,7 +63,8 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **Platform**: macOS 13.0+
 * **Language**: Swift 5.9+ (Swift 6 async-concurrency compliant)
 * **Frameworks**: SwiftUI & AppKit (MVVM Architecture)
-* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing local binaries (`opencode`, `mo`, `osascript`).
+* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing bundled local binaries (`llama-cli`, `osascript`).
+* **AI Engine**: Bundled C++/Metal GGUF inference engine (`llama-cli` & `libggml-metal.dylib`) with Google Gemma 270M Instruct model weights.
 * **Packaging**: Built into a standalone `.app` bundle and distributed via a compressed `.dmg` installer.
 
 ---
@@ -78,7 +75,6 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 
 ### Prerequisite
 * macOS 13+ with Xcode Command Line Tools installed (run `xcode-select --install` if you don't have it).
-* To use the AI Chat panel, install the `opencode` CLI utility (see instructions below).
 
 ### Installation
 
@@ -101,17 +97,6 @@ brew trust rian445/macasc
 brew install --cask macasc
 ```
 
-> [!IMPORTANT]
-> **Why is `brew trust` required?**
-> To safeguard users, recent versions of Homebrew require explicit approval before installing software from non-default, third-party user taps. Without running this, you may receive a `Refusing to load cask... from untrusted tap` block.
-> 
-> Running `brew trust rian445/macasc` permits Homebrew to compile and load the formula. You can verify and proceed with total peace of mind:
-> * **100% Open Source**: All source code is public and auditable in this repository.
-> * **Zero Data Collection**: The app is built to run 100% locally and offline. It uses strict App Transport Security (ATS) firewall directives at the OS layer to block all network access, ensuring your storage details, notes, and local AI prompts never leave your Mac.
-
-> [!TIP]
-> **Quarantine Bypass**: Installing via Homebrew Cask automatically runs a postflight script to clear the `com.apple.quarantine` attribute, allowing the app to launch instantly without macOS Gatekeeper verification warnings.
-
 #### Option 3: Build from Source
 1. **Clone the Repository**:
    ```bash
@@ -123,14 +108,9 @@ brew install --cask macasc
    ```bash
    ./build.sh
    ```
-   *This compiles the binary, structures the `Mac ASC.app` bundle, generates standard macOS icon sets, and compiles everything into a DMG installer named `Mac ASC.dmg`.*
-3. **Install the Application**:
-   * Open the generated `Mac ASC.dmg` in Finder.
-   * Drag **Mac ASC** into your **Applications** folder.
-
-4. **Launch**:
-   * Start **Mac ASC** from your Applications folder or Launchpad.
-   * The disk status icon (`externaldrive` glyph) will immediately appear in your macOS menu bar.
+   *This script automatically checks for model weights, compiles the binary, structures the `Mac ASC.app` bundle, generates standard macOS icon sets, and compiles everything into a DMG installer named `Mac_ASC.dmg`.*
+3. **Install & Launch**:
+   * Open the generated `Mac_ASC.dmg` in Finder and drag **Mac ASC** into your **Applications** folder.
 
 ---
 
@@ -138,10 +118,14 @@ brew install --cask macasc
 
 * `Sources/`
   * `MacStorageUtilityApp.swift` — App entry point deploying the Status Bar Item and centered `NSPanel` controller.
-  * `StorageViewModel.swift` — Coordinates application state, mounts/unmounts, custom terminal commands, AI chat threads, and directory size indexing.
+  * `StorageViewModel.swift` — Coordinates application state, custom commands, quick notes, AI chat threads, and directory size indexing.
   * `StorageManager.swift` — Scans application sizes, traverses folder hierarchies asynchronously, and measures disk volumes.
+  * `LocalAIEngine.swift` — Swift manager executing native offline GGUF inference via Apple Metal GPU acceleration.
   * `DropdownView.swift` — The core user interface, sliding tab switcher, custom commands pane, quick notes, and local AI chat panel overlays.
   * `VisualEffectView.swift` — Bridges SwiftUI to AppKit for custom glassmorphism.
+* `Resources/`
+  * `bin/` — Bundled C++/Metal GPU inference binary (`llama-cli`) and backend dynamic libraries (`libggml-metal.dylib`, `libllama.dylib`).
+  * `models/` — Bundled Gemma 270M Instruct GGUF model weights (`gemma-270m.gguf`).
 * `app_icon.png` — High-resolution source icon.
 * `build.sh` — Compilation script compiling code and packing the DMG.
 
@@ -150,4 +134,5 @@ brew install --cask macasc
 ## 📄 License & Privacy
 
 * **Privacy Policy**: This application operates strictly offline and collects no data. See the [Privacy Policy](PRIVACY.md) for more details.
+* **Architecture Docs**: Read [LOCAL_LLM_ARCHITECTURE.md](LOCAL_LLM_ARCHITECTURE.md) for full technical inference details.
 * **License**: This project is open-source and available under the [MIT License](LICENSE).
