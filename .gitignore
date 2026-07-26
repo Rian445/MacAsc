@@ -6,3 +6,5 @@ AppIcon.iconset/
 .swiftpm/
 build/
 dmg_temp/
+Resources/models/*.gguf
+

@@ -451,18 +451,22 @@ class StorageViewModel: ObservableObject {
 
     /// Loads the selected AI model and starts loading all available models
     private func loadSelectedModel() {
-        self.selectedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
+        self.selectedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? "Local LLM (Google Gemma 270M)"
         self.favoriteModels = UserDefaults.standard.stringArray(forKey: "AIFavoriteModels") ?? []
         
         // Pre-populate default favorite models if empty
         if self.favoriteModels.isEmpty {
             self.favoriteModels = [
+                "Local LLM (Google Gemma 270M)",
                 "opencode/deepseek-v4-flash-free",
                 "google/gemini-3.5-flash"
             ]
             UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
+        } else if !self.favoriteModels.contains("Local LLM (Google Gemma 270M)") {
+            self.favoriteModels.insert("Local LLM (Google Gemma 270M)", at: 0)
         }
         
+        self.availableModels = ["Local LLM (Google Gemma 270M)"]
         loadAvailableModels()
     }
     
@@ -509,9 +513,15 @@ class StorageViewModel: ObservableObject {
             }
             
             await MainActor.run {
-                self.availableModels = models
-                if self.selectedModel.isEmpty || !models.contains(self.selectedModel) {
-                    self.selectedModel = models.first(where: { $0.contains("deepseek-v4-flash-free") }) ?? models.first ?? ""
+                var list = ["Local LLM (Google Gemma 270M)"]
+                for m in models {
+                    if !list.contains(m) {
+                        list.append(m)
+                    }
+                }
+                self.availableModels = list
+                if self.selectedModel.isEmpty {
+                    self.selectedModel = "Local LLM (Google Gemma 270M)"
                     UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
                 }
             }
@@ -1352,6 +1362,30 @@ class StorageViewModel: ObservableObject {
         saveChatHistory()
         self.isAiResponding = true
         
+        if selectedModel == "Local LLM (Google Gemma 270M)" || selectedModel.isEmpty {
+            let attachedDir = chatThreads[idx].attachedDirectory
+            let aiMessageId = UUID()
+            let initialMessage = ChatMessage(id: aiMessageId, text: "", isUser: false, timestamp: Date())
+            self.chatThreads[idx].messages.append(initialMessage)
+            
+            LocalAIEngine.shared.generateResponse(
+                prompt: text,
+                contextPath: attachedDir,
+                onToken: { [weak self] token in
+                    guard let self = self,
+                          let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }),
+                          let msgIdx = self.chatThreads[threadIdx].messages.firstIndex(where: { $0.id == aiMessageId }) else { return }
+                    self.chatThreads[threadIdx].messages[msgIdx].text += token
+                },
+                onComplete: { [weak self] in
+                    guard let self = self else { return }
+                    self.isAiResponding = false
+                    self.saveChatHistory()
+                }
+            )
+            return
+        }
+        
         Task.detached(priority: .userInitiated) {
             guard let binaryPath = await self.getOpencodeBinaryPath() else {
                 await MainActor.run {
@@ -1768,7 +1802,7 @@ struct QuickNote: Identifiable, Codable, Equatable {
 
 struct ChatMessage: Identifiable, Codable, Equatable {
     let id: UUID
-    let text: String
+    var text: String
     let isUser: Bool
     let timestamp: Date
 }
