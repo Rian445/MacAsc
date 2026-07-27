@@ -451,22 +451,31 @@ class StorageViewModel: ObservableObject {
 
     /// Loads the selected AI model and starts loading all available models
     private func loadSelectedModel() {
-        self.selectedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? "Local LLM (Google Gemma 270M)"
+        let savedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
+        if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") {
+            self.selectedModel = "MacASC Local LLM"
+        } else {
+            self.selectedModel = savedModel
+        }
+        
         self.favoriteModels = UserDefaults.standard.stringArray(forKey: "AIFavoriteModels") ?? []
         
         // Pre-populate default favorite models if empty
         if self.favoriteModels.isEmpty {
             self.favoriteModels = [
-                "Local LLM (Google Gemma 270M)",
+                "MacASC Local LLM",
                 "opencode/deepseek-v4-flash-free",
                 "google/gemini-3.5-flash"
             ]
             UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
-        } else if !self.favoriteModels.contains("Local LLM (Google Gemma 270M)") {
-            self.favoriteModels.insert("Local LLM (Google Gemma 270M)", at: 0)
+        } else {
+            // Ensure MacASC Local LLM is at the top of favorites
+            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") }
+            if !self.favoriteModels.contains("MacASC Local LLM") {
+                self.favoriteModels.insert("MacASC Local LLM", at: 0)
+            }
         }
-        
-        self.availableModels = ["Local LLM (Google Gemma 270M)"]
+        self.availableModels = ["MacASC Local LLM"]
         loadAvailableModels()
     }
     
@@ -513,15 +522,15 @@ class StorageViewModel: ObservableObject {
             }
             
             await MainActor.run {
-                var list = ["Local LLM (Google Gemma 270M)"]
+                var list = ["MacASC Local LLM"]
                 for m in models {
                     if !list.contains(m) {
                         list.append(m)
                     }
                 }
                 self.availableModels = list
-                if self.selectedModel.isEmpty {
-                    self.selectedModel = "Local LLM (Google Gemma 270M)"
+                if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("270M") || self.selectedModel.contains("1B") {
+                    self.selectedModel = "MacASC Local LLM"
                     UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
                 }
             }
@@ -1362,14 +1371,17 @@ class StorageViewModel: ObservableObject {
         saveChatHistory()
         self.isAiResponding = true
         
-        if selectedModel == "Local LLM (Google Gemma 270M)" || selectedModel.isEmpty {
+        if selectedModel == "MacASC Local LLM" || selectedModel.hasPrefix("MacASC") || selectedModel.hasPrefix("Local LLM") || selectedModel.isEmpty {
             let attachedDir = chatThreads[idx].attachedDirectory
             let aiMessageId = UUID()
             let initialMessage = ChatMessage(id: aiMessageId, text: "", isUser: false, timestamp: Date())
             self.chatThreads[idx].messages.append(initialMessage)
             
+            let history = Array(self.chatThreads[idx].messages.dropLast(2))
+            
             LocalAIEngine.shared.generateResponse(
                 prompt: text,
+                history: history,
                 contextPath: attachedDir,
                 onToken: { [weak self] token in
                     guard let self = self,

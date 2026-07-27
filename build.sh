@@ -44,16 +44,17 @@ else
     echo "Warning: app_icon.png not found. Building without custom icon."
 fi
 
-# Auto-download Gemma 270M Instruct GGUF model if missing (e.g. on fresh git clone)
-if [ ! -f "Resources/models/gemma-270m.gguf" ]; then
-    echo "Downloading Gemma 270M Instruct GGUF model for Local AI..."
+# Auto-download Gemma 1B Instruct GGUF model if missing (e.g. on fresh git clone)
+if [ ! -f "Resources/models/gemma-1b.gguf" ]; then
+    echo "Downloading Gemma 1B Instruct GGUF model for Local AI..."
     mkdir -p Resources/models
-    curl -L -o "Resources/models/gemma-270m.gguf" "https://huggingface.co/ggml-org/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q8_0.gguf"
+    curl -L -o "Resources/models/gemma-1b.gguf" "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q8_0.gguf"
 fi
 
 # Copy bundled model assets & binaries if present
 if [ -d "Resources/models" ]; then
     echo "Bundling model weights into App Resources..."
+    rm -rf "${RESOURCES_DIR}/models"
     mkdir -p "${RESOURCES_DIR}/models"
     cp -R Resources/models/* "${RESOURCES_DIR}/models/" 2>/dev/null || true
 fi

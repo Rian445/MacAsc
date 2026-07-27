@@ -42,6 +42,7 @@ struct DropdownView: View {
     @State private var tabPageIndex: Int = 0
     @State private var isBackwardSlide: Bool = false
     @State private var chatInputText = ""
+    @State private var isChatInputFocused: Bool = true
     @State private var isDraggingFolderOver = false
     
     // Sort Mode State
@@ -2717,6 +2718,19 @@ extension DropdownView {
             
             // Input Bar & Stop Control
             HStack(spacing: 8) {
+                MacChatInputTextView(
+                    text: $chatInputText,
+                    isFocused: $isChatInputFocused,
+                    isDisabled: viewModel.isAiResponding,
+                    onCommit: {
+                        submitChatMessage()
+                    }
+                )
+                .frame(height: 32)
+                .padding(.horizontal, 6)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(6)
+                
                 if viewModel.isAiResponding {
                     // STOP AI Button
                     Button(action: {
@@ -2735,36 +2749,20 @@ extension DropdownView {
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
-                    
-                    Text("AI is processing query...")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .help("Stop current AI generation")
                 } else {
-                    TextField("Ask AI (e.g. explain opencode)", text: $chatInputText, onCommit: {
-                        submitChatMessage()
-                    })
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(6)
-                    .foregroundColor(.white)
-                    .font(.system(size: 11.5))
-                    .disabled(!viewModel.isOpencodeInstalled)
-                    
                     Button(action: {
                         submitChatMessage()
                     }) {
                         Image(systemName: "paperplane.fill")
                             .font(.system(size: 11))
-                            .foregroundColor(viewModel.isOpencodeInstalled ? .blue : .secondary)
+                            .foregroundColor(.blue)
                             .padding(7)
                             .background(Color.white.opacity(0.08))
                             .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!viewModel.isOpencodeInstalled || chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(chatInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 
                 // Clear button (always available, but disabled if responding)
@@ -2781,6 +2779,13 @@ extension DropdownView {
                     }
                     .buttonStyle(.plain)
                     .help("Clear active chat messages")
+                }
+            }
+            .onChange(of: viewModel.isAiResponding) { isResponding in
+                if !isResponding {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isChatInputFocused = true
+                    }
                 }
             }
             .padding(.top, 4)
@@ -2827,9 +2832,10 @@ extension DropdownView {
         
         viewModel.sendChatMessage(trimmed)
         
-        // Clear on the next run loop tick to override any focus resignation commits
+        // Clear input text and retain focus for next message
         DispatchQueue.main.async {
             self.chatInputText = ""
+            self.isChatInputFocused = true
         }
     }
     
@@ -3279,5 +3285,92 @@ struct NoteFolderNodeView<NoteRow: View>: View {
         let direct = viewModel.quickNotes.filter { $0.folder == n.fullPath }.count
         let sub = n.subfolders.reduce(0) { $0 + countTotalItems($1) }
         return direct + sub
+    }
+}
+
+// MARK: - Native Chat Input TextView (Shift+Enter support & focus retention)
+
+struct MacChatInputTextView: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    var isDisabled: Bool
+    var onCommit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = CommandTextView()
+        textView.delegate = context.coordinator
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.font = NSFont.systemFont(ofSize: 11.5)
+        textView.textColor = NSColor.white
+        textView.insertionPointColor = NSColor.white
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.textContainerInset = NSSize(width: 4, height: 7)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.onCommit = onCommit
+        textView.string = text
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? CommandTextView else { return }
+        
+        if textView.string != text {
+            textView.string = text
+        }
+        
+        textView.isEditable = !isDisabled
+        textView.onCommit = onCommit
+
+        if isFocused && !isDisabled {
+            DispatchQueue.main.async {
+                if let window = textView.window, window.firstResponder != textView {
+                    window.makeFirstResponder(textView)
+                }
+            }
+        }
+    }
+
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: MacChatInputTextView
+
+        init(_ parent: MacChatInputTextView) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            self.parent.text = textView.string
+        }
+    }
+}
+
+class CommandTextView: NSTextView {
+    var onCommit: (() -> Void)?
+
+    override func doCommand(by aSelector: Selector) {
+        if aSelector == #selector(insertNewline(_:)) {
+            if let event = NSApp.currentEvent, event.modifierFlags.contains(.shift) {
+                super.insertNewline(self)
+            } else {
+                onCommit?()
+            }
+            return
+        }
+        super.doCommand(by: aSelector)
     }
 }

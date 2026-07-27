@@ -48,26 +48,28 @@ class LocalAIEngine {
         return nil
     }
     
-    /// Returns path to embedded Gemma 270M GGUF model
+    /// Returns path to embedded Gemma 1B Instruct GGUF model
     func getGemmaModelPath() -> String? {
+        let name = "gemma-1b.gguf"
+        let baseName = "gemma-1b"
         // 1. App Bundle Resources
-        if let path = Bundle.main.path(forResource: "gemma-270m", ofType: "gguf", inDirectory: "models"),
+        if let path = Bundle.main.path(forResource: baseName, ofType: "gguf", inDirectory: "models"),
            FileManager.default.fileExists(atPath: path) {
             return path
         }
         if let resourcePath = Bundle.main.resourcePath {
-            let path = (resourcePath as NSString).appendingPathComponent("models/gemma-270m.gguf")
+            let path = (resourcePath as NSString).appendingPathComponent("models/\(name)")
             if FileManager.default.fileExists(atPath: path) {
                 return path
             }
         }
         // 2. Relative working directory
-        let localPath = "Resources/models/gemma-270m.gguf"
+        let localPath = "Resources/models/\(name)"
         if FileManager.default.fileExists(atPath: localPath) {
             return localPath
         }
         let currentDir = FileManager.default.currentDirectoryPath
-        let absLocalPath = (currentDir as NSString).appendingPathComponent("Resources/models/gemma-270m.gguf")
+        let absLocalPath = (currentDir as NSString).appendingPathComponent("Resources/models/\(name)")
         if FileManager.default.fileExists(atPath: absLocalPath) {
             return absLocalPath
         }
@@ -82,8 +84,8 @@ class LocalAIEngine {
         }
     }
     
-    /// Generates a local response using the embedded Gemma 270M GGUF model via llama-cli
-    func generateResponse(prompt: String, contextPath: String? = nil, onToken: @escaping (String) -> Void, onComplete: @escaping () -> Void) {
+    /// Generates a local response using the embedded Gemma 1B Instruct model via llama-cli
+    func generateResponse(prompt: String, history: [ChatMessage] = [], contextPath: String? = nil, onToken: @escaping (String) -> Void, onComplete: @escaping () -> Void) {
         cancelGeneration()
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -91,7 +93,7 @@ class LocalAIEngine {
             
             guard let cliPath = self.getLlamaCliPath() else {
                 DispatchQueue.main.async {
-                    onToken("Error: Bundled 'llama-cli' binary not found. Please ensure the app bundle includes Resources/bin/llama-cli.")
+                    onToken("Error: Bundled 'llama-cli' binary not found.")
                     onComplete()
                 }
                 return
@@ -99,29 +101,42 @@ class LocalAIEngine {
             
             guard let modelPath = self.getGemmaModelPath() else {
                 DispatchQueue.main.async {
-                    onToken("Error: 'gemma-270m.gguf' model file not found in Resources/models/.")
+                    onToken("Error: 'gemma-1b.gguf' model file not found in Resources/models/.")
                     onComplete()
                 }
                 return
             }
             
-            // Construct context-aware prompt
-            var fullPrompt = prompt
+            // System Persona & Context Metadata
+            var systemContext = "You are MacASC AI, an expert macOS utility & terminal assistant. Provide helpful, accurate, and concise answers."
             if let path = contextPath, !path.isEmpty {
-                fullPrompt = "Context Directory: \(path)\n\nUser Question: \(prompt)"
+                systemContext += "\nAttached Context Directory: \(path)"
             }
             
-            // Format Gemma Official Instruct Template
-            let formattedPrompt = "<start_of_turn>user\n\(fullPrompt)<end_of_turn>\n<start_of_turn>model\n"
+            let formattedPrompt = """
+            <start_of_turn>user
+            System Persona: \(systemContext)
+
+            User Question: \(prompt)<end_of_turn>
+            <start_of_turn>model
+
+            """
+            
+            #if DEBUG
+            print("===== MACASC PROMPT =====")
+            print(formattedPrompt)
+            print("=========================")
+            #endif
             
             let process = Process()
             process.executableURL = URL(fileURLWithPath: cliPath)
             
-            // llama-cli options for Gemma 270M Instruct GGUF inference
+            // llama-cli options for Gemma 1B Instruct GGUF single-turn inference
             var args = [
                 "-m", modelPath,
+                "-c", "4096",
                 "-p", formattedPrompt,
-                "-n", "256",
+                "-n", "512",
                 "--temp", "0.7",
                 "--no-display-prompt",
                 "-st",
@@ -145,8 +160,7 @@ class LocalAIEngine {
             self.activeProcess = process
             
             let handle = pipe.fileHandleForReading
-            var isStreamStarted = false
-            var pendingBuffer = ""
+            var isFirstStreamChunk = true
             
             handle.readabilityHandler = { fileHandle in
                 let availableData = fileHandle.availableData
@@ -154,34 +168,23 @@ class LocalAIEngine {
                     return
                 }
                 if let rawChunk = String(data: availableData, encoding: .utf8) {
-                    if !isStreamStarted {
-                        pendingBuffer += rawChunk
-                        // Check if prompt echo finished at <start_of_turn>model
-                        if let range = pendingBuffer.range(of: "<start_of_turn>model") {
-                            isStreamStarted = true
-                            let remaining = String(pendingBuffer[range.upperBound...])
-                            let cleaned = LocalAIEngine.cleanTokenText(remaining)
-                            if !cleaned.isEmpty {
-                                DispatchQueue.main.async {
-                                    onToken(cleaned)
-                                }
-                            }
-                        } else if let range = pendingBuffer.range(of: "model\n") {
-                            isStreamStarted = true
-                            let remaining = String(pendingBuffer[range.upperBound...])
-                            let cleaned = LocalAIEngine.cleanTokenText(remaining)
-                            if !cleaned.isEmpty {
-                                DispatchQueue.main.async {
-                                    onToken(cleaned)
-                                }
-                            }
+                    var cleaned = LocalAIEngine.cleanTokenText(rawChunk)
+                    
+                    if isFirstStreamChunk {
+                        // Strip leading blank space, newlines, and leading orphan commas at the start of response
+                        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                        while cleaned.hasPrefix(",") {
+                            cleaned = String(cleaned.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
                         }
-                    } else {
-                        let cleaned = LocalAIEngine.cleanTokenText(rawChunk)
-                        if !cleaned.isEmpty {
-                            DispatchQueue.main.async {
-                                onToken(cleaned)
-                            }
+                        if cleaned.isEmpty {
+                            return
+                        }
+                        isFirstStreamChunk = false
+                    }
+                    
+                    if !cleaned.isEmpty {
+                        DispatchQueue.main.async {
+                            onToken(cleaned)
                         }
                     }
                 }
@@ -190,16 +193,6 @@ class LocalAIEngine {
             do {
                 try process.run()
                 process.waitUntilExit()
-                
-                // Fallback if prompt echo marker was suppressed or formatted differently
-                if !isStreamStarted && !pendingBuffer.isEmpty {
-                    let cleaned = LocalAIEngine.cleanTokenText(pendingBuffer)
-                    if !cleaned.isEmpty {
-                        DispatchQueue.main.async {
-                            onToken(cleaned)
-                        }
-                    }
-                }
             } catch {
                 DispatchQueue.main.async {
                     onToken("\n[Inference Error: \(error.localizedDescription)]")
@@ -215,16 +208,43 @@ class LocalAIEngine {
         }
     }
     
+    /// Strips speaker label prefixes the model sometimes echoes from the transcript format
+    private static func stripSpeakerPrefix(_ text: String) -> String {
+        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["MacASC AI: MacASC AI:", "MacASC AI: ASC AI:", "ASC AI: ASC AI:", "MacASC AI:", "ASC AI:", "Mac ASC AI:", "Mac ASC:"] {
+            if result.hasPrefix(prefix) {
+                result = String(result.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+        return result
+    }
+    
     /// Filters out control tags, prompt echo fragments, and timing statistics
     private static func cleanTokenText(_ text: String) -> String {
-        let result = text
+        var result = text
+        
+        // Strip trailing partial tag artifacts like <start_of_tu or <end_of_tu before outputting to UI
+        for pattern in ["<start_of_turn>", "<start_of_turn", "<start_of_tu", "<start_of", "<start_", "<end_of_turn>", "<end_of_turn", "<end_of_tu", "<end_of", "<end_"] {
+            if let tagRange = result.range(of: pattern) {
+                result = String(result[..<tagRange.lowerBound])
+            }
+        }
+        
+        // If prompt header or memory context fragment leaked into text, strip up to <start_of_turn>model or model\n
+        if result.contains("System Persona:") || result.contains("[Recent Conversation Memory Context]:") || result.contains("User Question:") {
+            if let range = result.range(of: "<start_of_turn>model") {
+                result = String(result[range.upperBound...])
+            } else if let range = result.range(of: "model\n") {
+                result = String(result[range.upperBound...])
+            }
+        }
+        
+        result = result
             .replacingOccurrences(of: "<|im_start|>", with: "")
             .replacingOccurrences(of: "<|im_end|>", with: "")
             .replacingOccurrences(of: "<start_of_turn>", with: "")
             .replacingOccurrences(of: "<end_of_turn>", with: "")
-            .replacingOccurrences(of: "assistantuser", with: "")
-            .replacingOccurrences(of: "userassistant", with: "")
-            .replacingOccurrences(of: "Assistantuser", with: "")
         
         let lines = result.components(separatedBy: "\n")
         var filteredLines: [String] = []
@@ -237,10 +257,18 @@ class LocalAIEngine {
                l.contains("modalities :") ||
                l.contains("available commands:") ||
                l.contains("/exit or Ctrl+C") ||
+               l.contains("/clear") ||
+               l.contains("/read") ||
+               l.contains("/glob") ||
+               l.contains("/regen") ||
                l.contains("Exiting...") ||
                l.contains("[ Prompt:") ||
-               l.contains("▄▄ ▄▄") ||
-               l.contains("██ ██") ||
+               l.contains("█") ||
+               l.contains("▄") ||
+               l.contains("▀") ||
+               l.hasPrefix("System Persona:") ||
+               l.hasPrefix("[Recent Conversation Memory Context]:") ||
+               l.hasPrefix("User Question:") ||
                l.hasPrefix(">") {
                 continue
             }
