@@ -22,16 +22,17 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **↔️ Tab Paging Slider**: Rebuilds the segmented header into a horizontal sliding window that displays two tabs at a time with direction-aware spring animations and infinite circular wrapping (`<` and `>`):
   * **Page 0**: *Disk Insight* & *Custom Commands*
   * **Page 1**: *Quick Note* & *Chat with AI*
-* **🧠 Native Offline Local LLM (Google Gemma 270M)**: A dedicated 100% offline AI Chat panel powered by an embedded Apple Metal GPU-accelerated GGUF neural inference engine:
-  * **100% Plug-and-Play Offline**: Runs directly on your Mac's Metal GPU at **180 – 250+ tokens/second** without internet access or external CLI dependencies (`opencode`, `ollama`, or `python` NOT required).
-  * **Instruction-Tuned Model**: Uses the official `gemma-3-270m-it-Q8_0.gguf` model for smart, high-speed assistant responses, code generation, and Q&A.
+* **🧠 Native Offline Local LLM (Google Gemma 3 1B Instruct)**: A dedicated 100% offline AI Chat panel powered by an embedded Apple Metal GPU-accelerated GGUF neural inference engine:
+  * **100% Plug-and-Play Offline**: Runs directly on your Mac's Metal GPU at high speeds without internet access or external CLI dependencies (`opencode`, `ollama`, or `python` NOT required).
+  * **Instruction-Tuned Model**: Uses the official `gemma-3-1b-it-Q8_0.gguf` model (`gemma-1b.gguf`) for smart assistant responses, code generation, and Q&A.
   * **Zero Idle Memory Footprint**: Spawns processes on-demand and terminates immediately upon output completion (`0 MB RAM` when idle).
   * **Multiple Chat Threads**: Create, name, switch, and delete multiple independent conversation threads.
   * **Auto-Naming Threads**: New chat threads automatically rename themselves to match your first query.
-  * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Context Path: <path>`) into your next query, allowing the Local AI to inspect files or folder contexts.
+  * **File & Folder Context (Hidden Injection)**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon button in the header to attach local paths. The app silently injects the path metadata (`Attached Context Directory: <path>`) into your query, allowing the Local AI to inspect files or folder contexts.
   * **Visual State Handoff**: The paperclip icon lights up in yellow (`paperclip.circle.fill`) when a file or directory is attached.
   * **Interactive Bubble Controls**: Message bubbles support text selection and instant copy-to-clipboard actions with checkmark feedback.
   * **Stop AI Processing**: Cancel running queries mid-way, immediately terminating the background process and releasing ports/RAM.
+  * **Preserved Formatting**: Fully supports multi-line markdown rendering, bullet points, headers, and code snippets without collapsing lines.
 * **📁 Nested Subfolders & Tree Hierarchy**: Supports unlimited nested folder trees using forward-slash path strings (e.g. `DevOps/Docker` or `Work/Projects/Scripts`) across Custom Commands and Quick Notes. Subfolders render with visual tree indentation, recursive collapse/expand, and item count badges.
 * **🔃 Interactive Sort Mode & Drag-and-Drop Nesting**: Click the **Sort** button at the top of Saved Commands or Saved Notes to activate manual sorting mode:
   * **Up / Down Arrow Controls**: Manually reorder folders, subfolders, and individual items up and down.
@@ -64,7 +65,7 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 * **Language**: Swift 5.9+ (Swift 6 async-concurrency compliant)
 * **Frameworks**: SwiftUI & AppKit (MVVM Architecture)
 * **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing bundled local binaries (`llama-cli`, `osascript`).
-* **AI Engine**: Bundled C++/Metal GGUF inference engine (`llama-cli` & `libggml-metal.dylib`) with Google Gemma 270M Instruct model weights.
+* **AI Engine**: Bundled C++/Metal GGUF inference engine (`llama-cli` & `libggml-metal.dylib`) with Google Gemma 3 1B Instruct model weights (`gemma-1b.gguf`).
 * **Packaging**: Built into a standalone `.app` bundle and distributed via a compressed `.dmg` installer.
 
 ---
@@ -125,7 +126,7 @@ brew install --cask macasc
   * `VisualEffectView.swift` — Bridges SwiftUI to AppKit for custom glassmorphism.
 * `Resources/`
   * `bin/` — Bundled C++/Metal GPU inference binary (`llama-cli`) and backend dynamic libraries (`libggml-metal.dylib`, `libllama.dylib`).
-  * `models/` — Bundled Gemma 270M Instruct GGUF model weights (`gemma-270m.gguf`).
+  * `models/` — Bundled Gemma 3 1B Instruct GGUF model weights (`gemma-1b.gguf`).
 * `app_icon.png` — High-resolution source icon.
 * `build.sh` — Compilation script compiling code and packing the DMG.
 
