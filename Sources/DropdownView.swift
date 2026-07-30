@@ -36,6 +36,7 @@ struct DropdownView: View {
     @State private var newThreadTitleInput = ""
     @State private var newThreadFolderInput = ""
     @State private var showEditThreadDialog = false
+    @State private var showRemoveAttachmentPopover = false
     @State private var showAllModels = false
     
     // AI Chat State
@@ -670,14 +671,31 @@ extension DropdownView {
         .padding(.vertical, 12)
     }
 
+    private var appLogoImage: NSImage? {
+        if let bundleUrl = Bundle.main.url(forResource: "MacASC_logo", withExtension: "png"),
+           let img = NSImage(contentsOf: bundleUrl) {
+            return img
+        }
+        let devPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Resources/MacASC_logo.png")
+        if let img = NSImage(contentsOf: devPath) {
+            return img
+        }
+        if let mainIcon = NSApplication.shared.applicationIconImage {
+            return mainIcon
+        }
+        return nil
+    }
+
     // About Me Popover Panel
     private var aboutMePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                if let appIcon = NSApplication.shared.applicationIconImage {
-                    Image(nsImage: appIcon)
+                if let logo = appLogoImage {
+                    Image(nsImage: logo)
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
+                        .cornerRadius(5)
                 } else {
                     Image(systemName: "externaldrive")
                         .foregroundColor(.blue)
@@ -702,6 +720,25 @@ extension DropdownView {
                         .font(.subheadline)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 8))
+                            .foregroundColor(.blue)
+                        Link("Portfolio Website", destination: URL(string: "https://portfolio-rian-islams-projects.vercel.app/")!)
+                            .font(.system(size: 9))
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.top, 1)
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                        Text("rianislam@duck.com")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
@@ -802,6 +839,16 @@ extension DropdownView {
                                 .foregroundColor(.white.opacity(0.7))
                             Spacer()
                             Text(viewModel.appNotesSize.formattedStorageSize())
+                                .font(.system(size: 9))
+                                .foregroundColor(.white)
+                        }
+                        
+                        HStack {
+                            Text("Chat with AI:")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(viewModel.appChatAiSize.formattedStorageSize())
                                 .font(.system(size: 9))
                                 .foregroundColor(.white)
                         }
@@ -1307,7 +1354,7 @@ struct AppRow: View {
     let app: AppItem
     
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             FileIconView(path: app.path, fallbackSystemName: "app.gift")
             
             Text(app.name)
@@ -1321,8 +1368,23 @@ struct AppRow: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .fontWeight(.medium)
+            
+            Button(action: {
+                if !app.path.isEmpty {
+                    NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
+                }
+            }) {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 11))
+                    .foregroundColor(.blue.opacity(0.85))
+                    .padding(5)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(5)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .padding(.horizontal, 8)
         .background(Color.clear)
         .contentShape(Rectangle())
@@ -1338,7 +1400,7 @@ struct FileRow: View {
     let file: FileItem
     
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             FileIconView(path: file.path, fallbackSystemName: "doc")
             
             VStack(alignment: .leading, spacing: 1) {
@@ -1358,15 +1420,31 @@ struct FileRow: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .fontWeight(.medium)
+            
+            Button(action: {
+                if !file.path.isEmpty {
+                    NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
+                }
+            }) {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 11))
+                    .foregroundColor(.blue.opacity(0.85))
+                    .padding(5)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(5)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal file in Finder")
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .padding(.horizontal, 8)
         .background(Color.clear)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
+            if !file.path.isEmpty {
+                NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
+            }
         }
-        .help("Double-click to reveal in Finder")
     }
 }
 
@@ -2476,19 +2554,27 @@ extension DropdownView {
                 
                 HStack(spacing: 6) {
                     // Attachment Icon Button (Paperclip)
-                    let hasAttachment = viewModel.selectedThread?.attachedDirectory != nil
+                    let attachments = viewModel.selectedThread?.allAttachments ?? []
+                    let hasAttachment = !attachments.isEmpty
                     HStack(spacing: 0) {
                         Button(action: {
                             viewModel.selectDirectoryForActiveThread()
                         }) {
-                            Image(systemName: hasAttachment ? "paperclip.circle.fill" : "paperclip")
-                                .font(.system(size: 10))
-                                .foregroundColor(hasAttachment ? .yellow : .blue)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 6)
+                            HStack(spacing: 3) {
+                                Image(systemName: hasAttachment ? "paperclip.circle.fill" : "paperclip")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(hasAttachment ? .yellow : .blue)
+                                if attachments.count > 1 {
+                                    Text("\(attachments.count)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.yellow)
+                                }
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 6)
                         }
                         .buttonStyle(.plain)
-                        .help(hasAttachment ? "AI Context: \(viewModel.selectedThread?.attachedDirectory ?? "") (Click to change)" : "Attach file/folder context for AI")
+                        .help(hasAttachment ? "\(attachments.count) attached item(s) (Click to add more)" : "Attach file/folder context for AI")
                         
                         if hasAttachment {
                             Rectangle()
@@ -2496,8 +2582,12 @@ extension DropdownView {
                                 .frame(width: 1, height: 12)
                             
                             Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    viewModel.detachDirectoryFromActiveThread()
+                                if attachments.count == 1 {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        viewModel.detachDirectoryFromActiveThread()
+                                    }
+                                } else {
+                                    showRemoveAttachmentPopover = true
                                 }
                             }) {
                                 Image(systemName: "xmark.circle.fill")
@@ -2507,8 +2597,63 @@ extension DropdownView {
                                     .padding(.vertical, 6)
                             }
                             .buttonStyle(.plain)
-                            .help("Remove attached AI context")
+                            .help(attachments.count == 1 ? "Remove attached AI context" : "Manage and remove attached AI context items")
                             .transition(.scale.combined(with: .opacity))
+                            .popover(isPresented: $showRemoveAttachmentPopover, arrowEdge: .bottom) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Attached Context Items")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                    
+                                    Divider()
+                                    
+                                    ForEach(attachments, id: \.self) { path in
+                                        HStack(spacing: 6) {
+                                            Image(systemName: (try? FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType == .typeDirectory) ?? false ? "folder.fill" : "doc.fill")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.yellow)
+                                            
+                                            Text(URL(fileURLWithPath: path).lastPathComponent)
+                                                .font(.system(size: 11))
+                                                .lineLimit(1)
+                                            
+                                            Spacer()
+                                            
+                                            Button(action: {
+                                                viewModel.removeSpecificAttachmentFromActiveThread(path)
+                                                if (viewModel.selectedThread?.allAttachments.isEmpty ?? true) {
+                                                    showRemoveAttachmentPopover = false
+                                                }
+                                            }) {
+                                                Image(systemName: "xmark")
+                                                    .font(.system(size: 9, weight: .bold))
+                                                    .foregroundColor(.red.opacity(0.8))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .help("Remove \(URL(fileURLWithPath: path).lastPathComponent)")
+                                        }
+                                        .padding(.vertical, 2)
+                                    }
+                                    
+                                    Divider()
+                                    
+                                    Button(action: {
+                                        viewModel.detachDirectoryFromActiveThread()
+                                        showRemoveAttachmentPopover = false
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 9))
+                                            Text("Remove All")
+                                                .font(.caption2)
+                                        }
+                                        .foregroundColor(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(10)
+                                .frame(width: 220)
+                            }
                         }
                     }
                     .background(Color.white.opacity(0.06))
@@ -2549,6 +2694,7 @@ extension DropdownView {
                             if let thread = viewModel.selectedThread {
                                 newThreadTitleInput = thread.title
                                 newThreadFolderInput = thread.folder ?? ""
+                                isChatInputFocused = false
                                 showEditThreadDialog = true
                             }
                         }) {
@@ -2584,6 +2730,7 @@ extension DropdownView {
                                 HStack {
                                     Button("Cancel") {
                                         showEditThreadDialog = false
+                                        isChatInputFocused = true
                                     }
                                     .buttonStyle(.borderless)
                                     .font(.caption2)
@@ -2593,6 +2740,7 @@ extension DropdownView {
                                     Button("Save") {
                                         viewModel.updateChatThread(id: selectedId, title: newThreadTitleInput, folder: newThreadFolderInput)
                                         showEditThreadDialog = false
+                                        isChatInputFocused = true
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .font(.caption2)
@@ -2716,12 +2864,56 @@ extension DropdownView {
                 }
             }
             
+            // Visual Attachment Chips Bar
+            let currentAttachments = viewModel.selectedThread?.allAttachments ?? []
+            if !currentAttachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(currentAttachments, id: \.self) { path in
+                            HStack(spacing: 4) {
+                                Image(systemName: (try? FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType == .typeDirectory) ?? false ? "folder.fill" : "doc.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.yellow)
+                                
+                                Text(URL(fileURLWithPath: path).lastPathComponent)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .lineLimit(1)
+                                
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        viewModel.removeSpecificAttachmentFromActiveThread(path)
+                                    }
+                                }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(.red.opacity(0.8))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove \(URL(fileURLWithPath: path).lastPathComponent)")
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.yellow.opacity(0.12))
+                            .cornerRadius(5)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Color.yellow.opacity(0.25), lineWidth: 0.5)
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+                .frame(height: 22)
+            }
+            
             // Input Bar & Stop Control
             HStack(spacing: 8) {
                 MacChatInputTextView(
                     text: $chatInputText,
                     isFocused: $isChatInputFocused,
                     isDisabled: viewModel.isAiResponding,
+                    isPopoverActive: showEditThreadDialog,
                     onCommit: {
                         submitChatMessage()
                     }
@@ -3294,6 +3486,7 @@ struct MacChatInputTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
     var isDisabled: Bool
+    var isPopoverActive: Bool = false
     var onCommit: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -3336,7 +3529,7 @@ struct MacChatInputTextView: NSViewRepresentable {
         textView.isEditable = !isDisabled
         textView.onCommit = onCommit
 
-        if isFocused && !isDisabled {
+        if isFocused && !isDisabled && !isPopoverActive {
             DispatchQueue.main.async {
                 if let window = textView.window, window.firstResponder != textView {
                     window.makeFirstResponder(textView)

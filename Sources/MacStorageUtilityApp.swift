@@ -43,7 +43,7 @@ class StatusBarController: NSObject {
         
         // Set the button icon after calling super.init() to allow self reference
         if let button = self.statusItem.button {
-            button.image = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Storage Utility")
+            button.image = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Mac ASC")
             button.action = #selector(togglePopover(_:))
             button.target = self
         }

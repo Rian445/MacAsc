@@ -22,6 +22,7 @@ class StorageViewModel: ObservableObject {
     @Published var appSettingsSize: Int64 = 0
     @Published var appCommandsSize: Int64 = 0
     @Published var appNotesSize: Int64 = 0
+    @Published var appChatAiSize: Int64 = 0
     @Published var appGeneralSettingsSize: Int64 = 0
     @Published var chatThreads: [ChatThread] = []
     @Published var selectedThreadId: UUID? = nil
@@ -464,16 +465,16 @@ class StorageViewModel: ObservableObject {
         if self.favoriteModels.isEmpty {
             self.favoriteModels = [
                 "MacASC Local LLM",
-                "opencode/deepseek-v4-flash-free",
-                "google/gemini-3.5-flash"
+                "opencode/deepseek-v4-flash-free"
             ]
             UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         } else {
-            // Ensure MacASC Local LLM is at the top of favorites
-            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") }
+            // Ensure MacASC Local LLM is at the top of favorites and remove gemini 3.5 flash
+            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") || $0.contains("gemini-3.5-flash") || $0.contains("Gemini 3.5") }
             if !self.favoriteModels.contains("MacASC Local LLM") {
                 self.favoriteModels.insert("MacASC Local LLM", at: 0)
             }
+            UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         }
         self.availableModels = ["MacASC Local LLM"]
         loadAvailableModels()
@@ -1097,13 +1098,17 @@ class StorageViewModel: ObservableObject {
             let notesData = UserDefaults.standard.data(forKey: "QuickNotes")
             let computedNotesSize = Int64(notesData?.count ?? 0)
             
-            let computedGeneralSettingsSize = max(0, computedSettingsSize - computedCommandsSize - computedNotesSize)
+            let chatAiData = UserDefaults.standard.data(forKey: "ChatThreads")
+            let computedChatAiSize = Int64(chatAiData?.count ?? 0)
+            
+            let computedGeneralSettingsSize = max(0, computedSettingsSize - computedCommandsSize - computedNotesSize - computedChatAiSize)
             
             // Create immutable copies to capture safely in Sendable closure
             let finalBundleSize = computedBundleSize
             let finalSettingsSize = computedSettingsSize
             let finalCommandsSize = computedCommandsSize
             let finalNotesSize = computedNotesSize
+            let finalChatAiSize = computedChatAiSize
             let finalGeneralSettingsSize = computedGeneralSettingsSize
             
             // Post update back to the main thread
@@ -1112,6 +1117,7 @@ class StorageViewModel: ObservableObject {
                 self.appSettingsSize = finalSettingsSize
                 self.appCommandsSize = finalCommandsSize
                 self.appNotesSize = finalNotesSize
+                self.appChatAiSize = finalChatAiSize
                 self.appGeneralSettingsSize = finalGeneralSettingsSize
             }
         }
@@ -1372,7 +1378,8 @@ class StorageViewModel: ObservableObject {
         self.isAiResponding = true
         
         if selectedModel == "MacASC Local LLM" || selectedModel.hasPrefix("MacASC") || selectedModel.hasPrefix("Local LLM") || selectedModel.isEmpty {
-            let attachedDir = chatThreads[idx].attachedDirectory
+            let attachments = chatThreads[idx].allAttachments
+            let attachedDir = attachments.isEmpty ? nil : attachments.joined(separator: "\n")
             let aiMessageId = UUID()
             let initialMessage = ChatMessage(id: aiMessageId, text: "", isUser: false, timestamp: Date())
             self.chatThreads[idx].messages.append(initialMessage)
@@ -1569,29 +1576,62 @@ class StorageViewModel: ObservableObject {
     func attachDirectoryToActiveThread(_ path: String) {
         guard let threadId = selectedThreadId,
               let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
-        self.chatThreads[idx].attachedDirectory = path
+        var current = self.chatThreads[idx].allAttachments
+        if !current.contains(path) {
+            current.append(path)
+        }
+        self.chatThreads[idx].attachedDirectories = current
+        self.chatThreads[idx].attachedDirectory = current.joined(separator: ", ")
         saveChatHistory()
     }
     
-    /// Clears the associated directory path from the active chat thread
+    /// Attaches multiple file or directory paths to the active chat thread
+    func attachDirectoriesToActiveThread(_ paths: [String]) {
+        guard let threadId = selectedThreadId,
+              let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        var current = self.chatThreads[idx].allAttachments
+        for path in paths {
+            if !current.contains(path) {
+                current.append(path)
+            }
+        }
+        self.chatThreads[idx].attachedDirectories = current
+        self.chatThreads[idx].attachedDirectory = current.joined(separator: ", ")
+        saveChatHistory()
+    }
+    
+    /// Removes a specific file or directory path from the active chat thread's attachments
+    func removeSpecificAttachmentFromActiveThread(_ path: String) {
+        guard let threadId = selectedThreadId,
+              let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        var current = self.chatThreads[idx].allAttachments
+        current.removeAll { $0 == path }
+        self.chatThreads[idx].attachedDirectories = current.isEmpty ? nil : current
+        self.chatThreads[idx].attachedDirectory = current.isEmpty ? nil : current.joined(separator: ", ")
+        saveChatHistory()
+    }
+    
+    /// Clears all associated directory paths from the active chat thread
     func detachDirectoryFromActiveThread() {
         guard let threadId = selectedThreadId,
               let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
+        self.chatThreads[idx].attachedDirectories = nil
         self.chatThreads[idx].attachedDirectory = nil
         saveChatHistory()
     }
     
-    /// Triggers standard picker panel to attach a file or directory manually
+    /// Triggers standard picker panel to attach files or directories manually
     func selectDirectoryForActiveThread() {
         let openPanel = NSOpenPanel()
-        openPanel.title = "Select File or Folder for AI Context"
+        openPanel.title = "Select Files or Folders for AI Context"
         openPanel.canChooseDirectories = true
         openPanel.canChooseFiles = true
-        openPanel.allowsMultipleSelection = false
+        openPanel.allowsMultipleSelection = true
         
         if openPanel.runModal() == .OK {
-            if let url = openPanel.url {
-                attachDirectoryToActiveThread(url.path)
+            let paths = openPanel.urls.map { $0.path }
+            if !paths.isEmpty {
+                attachDirectoriesToActiveThread(paths)
             }
         }
     }
@@ -1824,7 +1864,17 @@ struct ChatThread: Identifiable, Codable, Equatable {
     var title: String
     var activeSessionId: String?
     var attachedDirectory: String?
+    var attachedDirectories: [String]?
     var messages: [ChatMessage]
     let dateCreated: Date
     var folder: String?
+    
+    var allAttachments: [String] {
+        if let list = attachedDirectories, !list.isEmpty {
+            return list
+        } else if let single = attachedDirectory, !single.isEmpty {
+            return [single]
+        }
+        return []
+    }
 }

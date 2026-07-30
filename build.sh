@@ -16,6 +16,16 @@ echo "Creating app directory structure..."
 mkdir -p "${MACOS_DIR}"
 mkdir -p "${RESOURCES_DIR}"
 
+# Sync app icon from Resources/MacASC_logo.png
+if [ -f "Resources/MacASC_logo.png" ]; then
+    cp "Resources/MacASC_logo.png" "app_icon.png" 2>/dev/null || true
+    cp "Resources/MacASC_logo.png" "${RESOURCES_DIR}/MacASC_logo.png" 2>/dev/null || true
+fi
+
+if [ -f "Resources/asc_menubaricon.png" ]; then
+    cp "Resources/asc_menubaricon.png" "${RESOURCES_DIR}/asc_menubaricon.png" 2>/dev/null || true
+fi
+
 # Compile custom application icon if app_icon.png exists
 if [ -f "app_icon.png" ]; then
     echo "Converting app_icon.png into native macOS AppIcon.icns..."

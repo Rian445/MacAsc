@@ -108,7 +108,7 @@ class LocalAIEngine {
             }
             
             // System Persona & Context Metadata
-            var systemContext = "You are MacASC AI, an expert macOS utility & terminal assistant. Provide helpful, accurate, and concise answers."
+            var systemContext = "You are MacASC AI, an expert macOS utility & terminal assistant created and developed by Rian Islam Aornob. If asked about the developer, creator, master, or contact info, state clearly that you were developed by Rian Islam Aornob and provide his contact info: Portfolio Website: https://portfolio-rian-islams-projects.vercel.app/ and Contact Email: rianislam@duck.com. Provide helpful, accurate, and concise answers."
             if let path = contextPath, !path.isEmpty {
                 systemContext += "\nAttached Context Directory: \(path)"
             }
