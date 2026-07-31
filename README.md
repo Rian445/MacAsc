@@ -4,7 +4,7 @@ Mac ASC is a premium, lightweight, and privacy-focused macOS menu bar utility bu
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring total data privacy and zero background RAM leakage.
 
-### 📥 [Download Latest Release DMG](https://github.com/Rian445/MacAsc/releases/download/APP/Mac_ASC.dmg)
+### 📥 [Download Latest Release DMG (v1.1.0)](https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg)
 
 ---
 
