@@ -456,36 +456,33 @@ class StorageViewModel: ObservableObject {
     }
 
     /// Loads the selected AI model and starts loading all available models
+    /// Loads the selected AI model and starts loading all available models
     private func loadSelectedModel() {
         let savedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
-        if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") {
-            self.selectedModel = "MacASC Local LLM"
-            UserDefaults.standard.set("MacASC Local LLM", forKey: "AISelectedModel")
+        if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") || savedModel.contains("Local LLM") {
+            self.selectedModel = "opencode/deepseek-v4-flash-free"
+            UserDefaults.standard.set("opencode/deepseek-v4-flash-free", forKey: "AISelectedModel")
         } else {
             self.selectedModel = savedModel
         }
         
         self.favoriteModels = UserDefaults.standard.stringArray(forKey: "AIFavoriteModels") ?? []
         
+        // Remove legacy Gemma/Local LLM models
+        self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") || $0.contains("gemini-3.5-flash") }
+        
         // Pre-populate default favorite models if empty
         if self.favoriteModels.isEmpty {
             self.favoriteModels = [
-                "MacASC Local LLM",
                 "opencode/deepseek-v4-flash-free"
             ]
-            UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         } else {
-            // Remove legacy Gemma models and purged gemini 3.5 flash
-            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("gemini-3.5-flash") }
-            if !self.favoriteModels.contains("MacASC Local LLM") {
-                self.favoriteModels.insert("MacASC Local LLM", at: 0)
-            }
             if !self.favoriteModels.contains("opencode/deepseek-v4-flash-free") {
                 self.favoriteModels.append("opencode/deepseek-v4-flash-free")
             }
-            UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         }
-        self.availableModels = ["MacASC Local LLM"]
+        UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
+        self.availableModels = self.favoriteModels
         loadAvailableModels()
     }
     
@@ -503,7 +500,7 @@ class StorageViewModel: ObservableObject {
     func loadAvailableModels() {
         // Note: checkCLIInstallations() is called by the caller (refresh/init) — no need to repeat here
         Task {
-            var combinedModels: [String] = ["MacASC Local LLM"]
+            var combinedModels: [String] = []
             
             // 1. Fetch opencode models if installed
             if let opencodePath = getOpencodeBinaryPath() {
@@ -540,8 +537,12 @@ class StorageViewModel: ObservableObject {
             
             await MainActor.run {
                 self.availableModels = combinedModels
-                if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("270M") || self.selectedModel.contains("1B") {
-                    self.selectedModel = "MacASC Local LLM"
+                if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("Local LLM") {
+                    if let first = combinedModels.first {
+                        self.selectedModel = first
+                    } else {
+                        self.selectedModel = "opencode/deepseek-v4-flash-free"
+                    }
                     UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
                 }
             }
@@ -1682,34 +1683,11 @@ class StorageViewModel: ObservableObject {
         saveChatHistory()
         self.isAiResponding = true
         
-        if selectedModel == "MacASC Local LLM" || selectedModel.hasPrefix("MacASC") || selectedModel.hasPrefix("Local LLM") || selectedModel.isEmpty {
-            let attachments = chatThreads[idx].allAttachments
-            let attachedDir = attachments.isEmpty ? nil : attachments.joined(separator: "\n")
-            let aiMessageId = UUID()
-            let initialMessage = ChatMessage(id: aiMessageId, text: "", isUser: false, timestamp: Date())
-            self.chatThreads[idx].messages.append(initialMessage)
-            
-            let history = Array(self.chatThreads[idx].messages.dropLast(2))
-            
-            LocalAIEngine.shared.generateResponse(
-                prompt: text,
-                history: history,
-                contextPath: attachedDir,
-                onToken: { [weak self] token in
-                    guard let self = self,
-                          let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }),
-                          let msgIdx = self.chatThreads[threadIdx].messages.firstIndex(where: { $0.id == aiMessageId }) else { return }
-                    self.chatThreads[threadIdx].messages[msgIdx].text += token
-                },
-                onComplete: { [weak self] in
-                    guard let self = self else { return }
-                    self.isAiResponding = false
-                    self.saveChatHistory()
-                }
-            )
-            return
-        }
-        
+        executeAICLIInBackground(text: text, threadId: threadId)
+    }
+    
+    /// Executes the AI query using the appropriate CLI agent (opencode, codex, antigravity) in the background
+    private func executeAICLIInBackground(text: String, threadId: UUID) {
         Task.detached(priority: .userInitiated) {
             let model = await self.selectedModel
             
@@ -1780,7 +1758,7 @@ class StorageViewModel: ObservableObject {
                         codexWorkDir = URL(fileURLWithPath: dir).deletingLastPathComponent().path
                     }
                 } else {
-                    codexWorkDir = NSString(string: "~/Documents").expandingTildeInPath
+                    codexWorkDir = FileManager.default.homeDirectoryForCurrentUser.path
                 }
                 arguments = ["exec", "-C", codexWorkDir, "--skip-git-repo-check"]
                 if !targetModelArg.isEmpty && targetModelArg != "codex" {
@@ -1809,7 +1787,7 @@ class StorageViewModel: ObservableObject {
                     arguments.append(targetModelArg)
                 }
                 if allowActions {
-                    arguments.append("--dangerously-skip-permissions")
+                    arguments.append("--auto")
                 }
                 if let sessionId = threadSessionId, !sessionId.isEmpty {
                     arguments.append("--session")
@@ -1948,7 +1926,7 @@ class StorageViewModel: ObservableObject {
         var dirDesc = "None"
         
         // 1. Attached Directory & cd location formatting
-        var cdDirectory = NSString(string: "~/Documents").expandingTildeInPath
+        var cdDirectory = FileManager.default.homeDirectoryForCurrentUser.path
         let attachments: [String]
         if let threadId = selectedThreadId,
            let thread = chatThreads.first(where: { $0.id == threadId }) {
@@ -2001,6 +1979,8 @@ class StorageViewModel: ObservableObject {
         } else {
             if cliName == "antigravity" {
                 execCommand += " --continue"
+            } else if cliName == "opencode" {
+                execCommand += " --continue"
             }
         }
         
@@ -2013,12 +1993,14 @@ class StorageViewModel: ObservableObject {
             }
         }
         
-        // Auto-approve permissions flag if enabled
+        // 4. Auto-approve permissions flag if enabled
         if allowAiSystemActions {
             if cliName == "codex" {
                 execCommand += " --dangerously-bypass-approvals-and-sandbox"
-            } else {
+            } else if cliName == "antigravity" {
                 execCommand += " --dangerously-skip-permissions"
+            } else if cliName == "opencode" {
+                execCommand += " --auto"
             }
         }
         

@@ -1,6 +1,6 @@
 # Mac ASC
 
-Mac ASC is a premium, lightweight, and privacy-focused macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, quick folder pinning with direct Finder navigation, custom shell script shortcuts, quick note-taking, and a native multi-agent AI assistant panel supporting **Local Offline LLMs (Gemma 3 1B)** as well as **CLI Agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`)**.
+Mac ASC is a premium, lightweight, and privacy-focused macOS menu bar utility built with SwiftUI and AppKit. It provides a real-time, categorized breakdown of your internal and external storage space, interactive application monitoring, quick folder pinning with direct Finder navigation, custom shell script shortcuts, quick note-taking, and a native multi-agent AI assistant panel supporting **CLI Agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`)**.
 
 Designed with a sleek, translucent glassmorphism interface, it blends seamlessly with the macOS environment while ensuring total data privacy and zero background RAM leakage.
 
@@ -20,7 +20,6 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 
 * **🪟 Premium Glassmorphic UI**: Uses AppKit's native backdrop-blur transparency (`NSVisualEffectView` layered with a 45% dark opacity tint) to create a wallpaper-bleeding menu bar dropdown that respects light and dark modes dynamically.
 * **🤖 Multi-Agent AI Assistant Panel**:
-  * **100% Offline Local LLM (Google Gemma 3 1B Instruct)**: Embedded Apple Metal GPU-accelerated GGUF neural inference engine (`gemma-1b.gguf`) running 100% locally on your Mac's GPU with zero internet connection or python/CLI dependencies.
   * **Multi-CLI Agent Compatibility (`opencode` + `codex` + `antigravity`)**: Fully compatible with your system-installed AI CLI tools:
     * ⚡ **`opencode` CLI**: Execute models from `opencode` (e.g. `opencode/deepseek-v4-flash-free`, `opencode/big-pickle`). Includes automatic session discovery and remote session cleanup on thread deletion.
     * 🤖 **OpenAI `codex` CLI**: Seamlessly run Codex models (`gpt-5.5`, `gpt-4o`) via `stdin` prompt piping with auto-directory context.
@@ -67,16 +66,7 @@ graph TD
     User([User Prompt in Mac ASC UI]) --> VM[StorageViewModel]
     
     VM -->|Model Selection Check| ModelRouter{Selected Model?}
-    
-    %% Local LLM Path
-    ModelRouter -->|"MacASC Local LLM"| LocalEngine[LocalAIEngine.swift]
-    LocalEngine -->|Spawn On-Demand Process| LlamaProcess[Process: llama-cli]
-    LlamaProcess -->|Apple Metal GPU Acceleration| Metal[libggml-metal.dylib + Gemma 3 1B]
-    Metal -->|Stream Output Tokens| LocalEngine
-    LlamaProcess -->|Output Finished| TerminateLocal[Process Terminates & Frees RAM]
-    TerminateLocal -->|0 MB Idle RAM| macOS1[Memory Reclaimed by macOS]
-
-    %% CLI Agents Path
+        %% CLI Agents Path
     ModelRouter -->|"opencode / codex / antigravity"| CLIRunner[Process Runner & PATH Resolver]
     CLIRunner -->|opencode run| Opencode[Process: opencode]
     CLIRunner -->|codex exec via stdin| Codex[Process: codex]
@@ -95,7 +85,7 @@ graph TD
 ### ⚡ How Memory is Managed:
 1. **Prompt Trigger**: When a user submits a prompt, `StorageViewModel` spawns a background `Process()`.
 2. **Token Generation**: 
-   - **Local LLM**: Executes `llama-cli` with Metal GPU acceleration (`libggml-metal.dylib`), streaming tokens to the UI.
+
    - **CLI Agents**: Executes `opencode`, `codex`, or `antigravity` via universal PATH resolution (`makeCLIEnvironment()`).
 3. **Instant Process Termination**: As soon as token generation completes, `process.waitUntilExit()` finishes, `activeAiProcess` is set to `nil`, and macOS reclaims 100% of the process memory.
 4. **Idle State**: Between chat queries, **no AI daemon runs in memory**. Added RAM footprint is **0 MB**.
@@ -134,25 +124,12 @@ sequenceDiagram
 
 ---
 
-## 🧠 Native Offline Local LLM Details
-
-Mac ASC embeds a complete, zero-dependency offline AI engine right inside the application bundle:
-
-* **Neural Model**: **Google Gemma 3 1B Instruct** (`gemma-3-1b-it-Q8_0.gguf`), bundled at `Resources/models/gemma-1b.gguf`.
-* **Hardware Engine**: C++/Metal GPU inference runtime (`llama-cli` & `libggml-metal.dylib`), accelerating matrix math directly on Apple Silicon M-series (M1/M2/M3/M4/M5) and Intel Metal GPUs.
-* **100% Plug-and-Play**: Requires zero downloads, zero setup, zero python/pip environments, zero Ollama services, and zero API keys.
-* **Air-Gapped Privacy**: Runs 100% offline with zero internet access. Prompts, code blocks, and responses never leave your Mac.
-* **Workspace Context Injection**: Attach files or folders to automatically pass workspace directory context (`Context Path: <path>`) into local prompts.
-
----
-
 ## 🛠️ Technology Stack
 
 * **Platform**: macOS 13.0+
 * **Language**: Swift 5.9+ (Swift 6 async-concurrency compliant)
 * **Frameworks**: SwiftUI & AppKit (MVVM Architecture)
-* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing bundled local binaries (`llama-cli`) and system CLI agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`).
-* **AI Engine**: Embedded Apple Metal GPU GGUF inference engine (`libggml-metal.dylib`) with Google Gemma 3 1B Instruct weights (`gemma-1b.gguf`), plus CLI agent integration.
+* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing system CLI agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`).
 * **Packaging**: Built into a standalone `.app` bundle and distributed via a compressed `.dmg` installer.
 
 ---
@@ -191,12 +168,14 @@ brew install --cask macasc
    git clone https://github.com/Rian445/MacAsc.git
    cd MacAsc
    ```
+
 2. **Build and Package**:
    Run the build script in the root directory:
    ```bash
+   chmod +x build.sh
    ./build.sh
    ```
-   *This script automatically checks for model weights, compiles the binary, structures the `Mac ASC.app` bundle, generates standard macOS icon sets, and compiles everything into a DMG installer named `Mac_ASC.dmg`.*
+   *This script compiles the binary, structures the `Mac ASC.app` bundle, generates standard macOS icon sets, and compiles everything into a DMG installer named `Mac_ASC.dmg`.*
 
 ---
 
@@ -206,12 +185,8 @@ brew install --cask macasc
   * `MacStorageUtilityApp.swift` — App entry point deploying the Status Bar Item and centered `NSPanel` controller.
   * `StorageViewModel.swift` — Coordinates application state, custom commands, quick notes, AI chat threads, `opencode`/`codex`/`antigravity` CLI discovery, and directory size indexing.
   * `StorageManager.swift` — Scans application sizes, traverses folder hierarchies asynchronously, and measures disk volumes.
-  * `LocalAIEngine.swift` — Swift manager executing native offline GGUF inference via Apple Metal GPU acceleration.
-  * `DropdownView.swift` — Core user interface, modular `@ViewBuilder` chat controls, sliding tab switcher, custom commands pane, quick notes, and local AI chat panel overlays.
+  * `DropdownView.swift` — Core user interface, modular `@ViewBuilder` chat controls, sliding tab switcher, custom commands pane, quick notes, and multi-agent AI chat panel overlays.
   * `VisualEffectView.swift` — Bridges SwiftUI to AppKit for custom glassmorphism.
-* `Resources/`
-  * `bin/` — Bundled C++/Metal GPU inference binary (`llama-cli`) and backend dynamic libraries (`libggml-metal.dylib`, `libllama.dylib`).
-  * `models/` — Bundled Gemma 3 1B Instruct GGUF model weights (`gemma-1b.gguf`).
 * `app_icon.png` — High-resolution source icon.
 * `build.sh` — Compilation script compiling code and packing the DMG.
 

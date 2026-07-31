@@ -14,15 +14,8 @@ The Mac ASC native application binary (`Mac ASC.app`) contains zero telemetry, z
 
 ---
 
-## 🧠 2. Offline Local LLM (`MacASC Local LLM`)
-* **100% On-Device Metal GPU Inference**: When using **MacASC Local LLM** (Google Gemma 3 1B Instruct), all prompt processing and neural token generation occur 100% offline on your Mac's graphics hardware via Apple Metal GPU acceleration (`LocalAIEngine.swift` and `Resources/bin/llama-cli`).
-* **Air-Gapped Operation**: The local inference engine contains zero networking code. No prompt data, text completions, or context paths are ever transmitted over the internet.
-* **Zero Idle Memory Footprint**: Local inference processes run strictly on-demand. When a response finishes generating, the background process terminates immediately (`process.waitUntilExit()`), returning idle RAM and GPU memory usage to **0 MB**.
-
----
-
-## 🤖 3. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
-Mac ASC supports integration with third-party command-line agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`) that you have installed on your Mac:
+## 🤖 2. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
+Mac ASC supports integration with command-line agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`) that you have installed on your Mac:
 * **User-Initiated Execution**: CLI agents are only executed when you explicitly select a CLI model from the chat dropdown and send a prompt.
 * **Local CLI Authentication**: Mac ASC executes your locally installed CLI binaries (`/opt/homebrew/bin/opencode`, `codex`, `agy`) using standard background subprocess wrappers (`Process()`). The CLI tools use your own local authentication tokens and API keys configured in your terminal environment.
 * **Server-Side Sessions**: Chat session IDs (`ses_...` or `--conversation`) are maintained by the respective CLI provider to preserve conversation context.
@@ -30,16 +23,16 @@ Mac ASC supports integration with third-party command-line agents (`opencode`, O
 
 ---
 
-## 🛡️ 4. AI System Action Permission Controls
+## 🛡️ 3. AI System Action Permission Controls
 * **Safe Defaults**: Permission auto-approval flags (`--dangerously-skip-permissions` / `--dangerously-bypass-approvals-and-sandbox`) are **disabled by default**.
 * **Explicit Opt-In**: System action flags are only passed to CLI runners if you explicitly turn on the *"Allow AI System Actions"* toggle in Settings.
 
 ---
 
-## 🌐 5. System-Level ATS Security & Firewall
+## 🌐 4. System-Level ATS Security & Firewall
 * **App Transport Security (ATS)**: The application bundle configuration (`Info.plist`) includes a strict App Transport Security directive (`NSAllowsArbitraryLoads: false`), instructing the macOS system runtime to block unauthorized network connections from the native app binary.
 
 ---
 
-## ✉️ 6. Contact & Support
+## ✉️ 5. Contact & Support
 Because we do not collect any user data or maintain user databases, we have no tracking logs to look up. If you have questions regarding the security or privacy architecture of Mac ASC, you can review the open-source codebase directly on [GitHub](https://github.com/Rian445/MacAsc).
