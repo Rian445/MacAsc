@@ -25,6 +25,9 @@ struct DropdownView: View {
     @State private var newNoteContent = ""
     @State private var newNoteFolder = ""
     @State private var isNoteFormExpanded = false
+    @State private var isCreatingFullNote = false
+    @State private var isNoteEditingMode = false
+    @State private var noteSearchQuery = ""
     @State private var editingNote: QuickNote? = nil
     @State private var noteToDelete: QuickNote? = nil
     @State private var showNoteDeleteConfirmation = false
@@ -204,14 +207,22 @@ struct DropdownView: View {
                     .contentShape(Rectangle())
                 } else if tabToRender == 2 {
                     // Quick Notes View
-                    ScrollView(.vertical, showsIndicators: false) {
+                    if editingNote != nil || isCreatingFullNote {
                         quickNotesSection
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.black.opacity(0.001))
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            quickNotesSection
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
+                        .frame(maxHeight: .infinity)
+                        .background(Color.black.opacity(0.001))
+                        .contentShape(Rectangle())
                     }
-                    .frame(maxHeight: .infinity)
-                    .background(Color.black.opacity(0.001))
-                    .contentShape(Rectangle())
                 } else if tabToRender == 3 {
                     // Chat with AI View (opencode TUI wrapper)
                     aiChatSection
@@ -2013,245 +2024,456 @@ extension DropdownView {
     
     // Quick Notes Section Builder
     private var quickNotesSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Add/Edit Note Form
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text(editingNote == nil ? "Add Quick Note" : "Edit Quick Note")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            if isNoteFormExpanded {
-                                // Collapse and reset input
-                                editingNote = nil
-                                newNoteTitle = ""
-                                newNoteContent = ""
-                                newNoteFolder = ""
-                            }
-                            isNoteFormExpanded.toggle()
-                        }
-                    }) {
-                        Image(systemName: isNoteFormExpanded ? "minus.circle.fill" : "plus.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.blue)
+        Group {
+            if editingNote != nil || isCreatingFullNote {
+                fullWindowNoteView
+            } else {
+                quickNotesListView
+            }
+        }
+    }
+    
+    // Full Window Note View (Creation & Viewing/Editing)
+    private var fullWindowNoteView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Full Window Top Navigation & Control Toolbar
+            HStack(spacing: 6) {
+                // Smaller Icon-only Back Button
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        editingNote = nil
+                        isCreatingFullNote = false
+                        isNoteEditingMode = false
+                        newNoteTitle = ""
+                        newNoteContent = ""
+                        newNoteFolder = ""
                     }
-                    .buttonStyle(.plain)
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(6)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help("Back to Notes list")
+                
+                if !isCreatingFullNote && !isNoteEditingMode {
+                    // READ-ONLY VIEWING MODE: Title + Folder Tag on Top Same Line
+                    HStack(spacing: 6) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(newNoteTitle.isEmpty ? "Untitled Note" : newNoteTitle)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        }
+                        
+                        if !newNoteFolder.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 9))
+                                Text(newNoteFolder)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundColor(.orange.opacity(0.9))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.12))
+                            .cornerRadius(4)
+                            .fixedSize()
+                        }
+                    }
                 }
                 
-                if isNoteFormExpanded {
-                    VStack(spacing: 8) {
-                        TextField("Title (e.g. Snippet, Reminder)", text: $newNoteTitle)
-                            .textFieldStyle(.plain)
-                            .padding(8)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(6)
-                            .foregroundColor(.white)
-                            .font(.system(size: 12))
-                        
-                        ZStack(alignment: .topLeading) {
-                            TextEditor(text: $newNoteContent)
-                                .font(.system(size: 12))
-                                .foregroundColor(.white)
-                                .scrollContentBackground(.hidden)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(6)
-                                .frame(height: 70)
-                            
-                            if newNoteContent.isEmpty {
-                                Text("Content / Text")
-                                    .foregroundColor(.white.opacity(0.35))
-                                    .font(.system(size: 12))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 7)
-                                    .allowsHitTesting(false)
+                Spacer(minLength: 4)
+                
+                if let note = editingNote {
+                    // Copy Content Button
+                    Button(action: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(newNoteContent, forType: .string)
+                        withAnimation {
+                            copiedNoteId = note.id
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation {
+                                if copiedNoteId == note.id { copiedNoteId = nil }
                             }
                         }
-                        
-                        HStack(spacing: 6) {
-                            TextField("Folder Name (Optional)", text: $newNoteFolder)
-                                .textFieldStyle(.plain)
-                                .padding(8)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(6)
-                                .foregroundColor(.white)
-                                .font(.system(size: 12))
-                            
-                            let folderTree = viewModel.getNoteFolderTree()
-                            let formattedFolders = viewModel.getFormattedFolderPaths(folderTree)
-                            if !formattedFolders.isEmpty {
-                                Menu {
-                                    ForEach(formattedFolders, id: \.path) { item in
-                                        Button(item.label) {
-                                            newNoteFolder = item.path
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "folder.badge.plus")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.orange)
-                                        .padding(8)
-                                        .background(Color.white.opacity(0.06))
-                                        .cornerRadius(6)
-                                }
-                                .menuStyle(.button)
-                                .help("Choose from existing folders")
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: copiedNoteId == note.id ? "checkmark.circle.fill" : "doc.on.doc")
+                                .font(.system(size: 10, weight: .bold))
+                            if copiedNoteId == note.id {
+                                Text("Copied")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .lineLimit(1)
                             }
                         }
+                        .foregroundColor(copiedNoteId == note.id ? .green : .white)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 7)
+                        .background(Color.white.opacity(0.12))
+                        .cornerRadius(6)
                     }
-                    .padding(.top, 4)
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .help("Copy note text")
                     
-                    HStack(spacing: 8) {
-                        if editingNote != nil {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    newNoteTitle = ""
-                                    newNoteContent = ""
-                                    newNoteFolder = ""
-                                    editingNote = nil
-                                    isNoteFormExpanded = false
-                                }
-                            }) {
-                                Text("Cancel")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .padding(.vertical, 7)
-                                    .frame(maxWidth: .infinity)
-                                    .foregroundColor(.white)
-                                    .background(Color.white.opacity(0.12))
-                                    .cornerRadius(6)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
+                    // Delete Note Button
+                    Button(action: {
+                        noteToDelete = note
+                        showNoteDeleteConfirmation = true
+                    }) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red.opacity(0.85))
+                            .padding(6)
+                            .background(Color.red.opacity(0.15))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .help("Delete note")
+                    
+                    if !isNoteEditingMode {
+                        // EDIT BUTTON (Icon-only compact mode)
                         Button(action: {
-                            if let note = editingNote {
-                                viewModel.updateQuickNote(id: note.id, title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
-                            } else {
-                                viewModel.addQuickNote(title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
-                            }
-                            newNoteTitle = ""
-                            newNoteContent = ""
-                            newNoteFolder = ""
-                            editingNote = nil
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                isNoteFormExpanded = false
+                                isNoteEditingMode = true
                             }
                         }) {
-                            HStack {
-                                Spacer()
-                                Image(systemName: editingNote == nil ? "plus.circle.fill" : "checkmark.circle.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text(editingNote == nil ? "Add Note" : "Save Changes")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                Spacer()
+                            Image(systemName: "pencil")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(Color.blue)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .help("Edit note")
+                    } else {
+                        // SAVE BUTTON (When in Editing Mode)
+                        Button(action: {
+                            viewModel.updateQuickNote(id: note.id, title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isNoteEditingMode = false
                             }
-                            .padding(.vertical, 7)
-                            .frame(maxWidth: .infinity)
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("Save")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .lineLimit(1)
+                            }
                             .foregroundColor(.white)
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 9)
                             .background(newNoteTitle.isEmpty || newNoteContent.isEmpty ? Color.blue.opacity(0.3) : Color.blue)
                             .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
+                        .fixedSize()
                         .disabled(newNoteTitle.isEmpty || newNoteContent.isEmpty)
                     }
-                    .padding(.top, 4)
+                } else if isCreatingFullNote {
+                    // CREATE BUTTON (When creating a new note)
+                    Button(action: {
+                        viewModel.addQuickNote(title: newNoteTitle, content: newNoteContent, folder: newNoteFolder)
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            editingNote = nil
+                            isCreatingFullNote = false
+                            isNoteEditingMode = false
+                            newNoteTitle = ""
+                            newNoteContent = ""
+                            newNoteFolder = ""
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Create")
+                                .font(.system(size: 11, weight: .bold))
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 9)
+                        .background(newNoteTitle.isEmpty || newNoteContent.isEmpty ? Color.blue.opacity(0.3) : Color.blue)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .disabled(newNoteTitle.isEmpty || newNoteContent.isEmpty)
                 }
             }
-            .padding(12)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-            )
             
-            // Saved Notes List
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Saved Notes")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 2)
+            // Editable Title & Folder Inputs (Shown ONLY in Edit / Create Mode)
+            if isCreatingFullNote || isNoteEditingMode {
+                VStack(spacing: 6) {
+                    TextField("Note Title...", text: $newNoteTitle)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                        .foregroundColor(.white)
+                    
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange.opacity(0.8))
+                        
+                        TextField("Folder / Subfolder (e.g. Work/Projects)", text: $newNoteFolder)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white)
+                        
+                        let folderTree = viewModel.getNoteFolderTree()
+                        let formattedFolders = viewModel.getFormattedFolderPaths(folderTree)
+                        if !formattedFolders.isEmpty {
+                            Menu {
+                                ForEach(formattedFolders, id: \.path) { item in
+                                    Button(item.label) {
+                                        newNoteFolder = item.path
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "folder.badge.plus")
+                                        .font(.system(size: 9))
+                                    Text("Select")
+                                        .font(.system(size: 9, weight: .semibold))
+                                }
+                                .foregroundColor(.orange)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(5)
+                            }
+                            .menuStyle(.button)
+                            .fixedSize()
+                            .help("Choose from existing folders")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .background(Color.white.opacity(0.04))
+                    .cornerRadius(6)
+                }
+            }
+            
+            // Full Window Text Content / Editor Area
+            if isCreatingFullNote || isNoteEditingMode {
+                // EDITABLE MODE
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $newNoteContent)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                    
+                    if newNoteContent.isEmpty {
+                        Text("Write your note content here...")
+                            .foregroundColor(.white.opacity(0.35))
+                            .font(.system(size: 12))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxHeight: .infinity)
+            } else {
+                // READ-ONLY VIEWING MODE: Typing is strictly disabled until user clicks Edit
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(newNoteContent.isEmpty ? "No content in this note." : newNoteContent)
+                        .font(.system(size: 12))
+                        .foregroundColor(newNoteContent.isEmpty ? .white.opacity(0.35) : .white)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                .frame(maxHeight: .infinity)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+    
+    // Saved Notes List Overview View
+    private var quickNotesListView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Bar: "Quick Notes" + "+ Add Note" button
+            HStack {
+                Text("Saved Notes")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 2)
+                
+                Spacer()
+                
+                // "+ Add Note" Button (Full Window Mode Trigger)
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        editingNote = nil
+                        newNoteTitle = ""
+                        newNoteContent = ""
+                        newNoteFolder = ""
+                        isCreatingFullNote = true
+                        isNoteEditingMode = true
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Add Note")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    .background(Color.blue)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Search / Filter & Sort Controls
+            if !viewModel.quickNotes.isEmpty {
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        TextField("Filter notes...", text: $noteSearchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundColor(.white)
+                        if !noteSearchQuery.isEmpty {
+                            Button(action: { noteSearchQuery = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(6)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(6)
                     
                     Spacer()
                     
-                    if !viewModel.quickNotes.isEmpty {
-                        let allNoteFolderPaths = getAllFolderPaths(from: viewModel.getNoteFolderTree())
-                        let areAllNoteFoldersCollapsed = !allNoteFolderPaths.isEmpty && allNoteFolderPaths.allSatisfy { collapsedNotesFolders.contains($0) }
-                        
-                        if !allNoteFolderPaths.isEmpty {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    if areAllNoteFoldersCollapsed {
-                                        collapsedNotesFolders.removeAll()
-                                    } else {
-                                        collapsedNotesFolders = Set(allNoteFolderPaths)
-                                    }
-                                }
-                            }) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: areAllNoteFoldersCollapsed ? "chevron.down.circle" : "chevron.up.circle")
-                                        .font(.system(size: 9, weight: .bold))
-                                    Text(areAllNoteFoldersCollapsed ? "Expand All" : "Collapse")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 6)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                            .buttonStyle(.plain)
-                            .help(areAllNoteFoldersCollapsed ? "Expand all folders" : "Collapse all folders")
-                        }
-                        
+                    let allNoteFolderPaths = getAllFolderPaths(from: viewModel.getNoteFolderTree())
+                    let areAllNoteFoldersCollapsed = !allNoteFolderPaths.isEmpty && allNoteFolderPaths.allSatisfy { collapsedNotesFolders.contains($0) }
+                    
+                    if !allNoteFolderPaths.isEmpty {
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                isNoteSortActive.toggle()
+                                if areAllNoteFoldersCollapsed {
+                                    collapsedNotesFolders.removeAll()
+                                } else {
+                                    collapsedNotesFolders = Set(allNoteFolderPaths)
+                                }
                             }
                         }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: isNoteSortActive ? "checkmark.circle.fill" : "arrow.up.arrow.down")
+                            HStack(spacing: 3) {
+                                Image(systemName: areAllNoteFoldersCollapsed ? "chevron.down.circle" : "chevron.up.circle")
                                     .font(.system(size: 9, weight: .bold))
-                                Text(isNoteSortActive ? "Done" : "Sort")
+                                Text(areAllNoteFoldersCollapsed ? "Expand" : "Collapse")
                                     .font(.system(size: 9, weight: .bold))
                             }
                             .foregroundColor(.white)
                             .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            .background(isNoteSortActive ? Color.blue : Color.white.opacity(0.1))
+                            .padding(.horizontal, 6)
+                            .background(Color.white.opacity(0.1))
                             .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
                     }
+                    
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isNoteSortActive.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: isNoteSortActive ? "checkmark.circle.fill" : "arrow.up.arrow.down")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(isNoteSortActive ? "Done" : "Sort")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(isNoteSortActive ? Color.blue : Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            
+            // Notes List Content
+            if viewModel.quickNotes.isEmpty {
+                HStack {
+                    Spacer()
+                    Text("No notes saved yet. Click '+ Add Note' above!")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 24)
+                    Spacer()
+                }
+                .background(Color.white.opacity(0.02))
+                .cornerRadius(10)
+            } else {
+                let filteredNotes = noteSearchQuery.isEmpty ? viewModel.quickNotes : viewModel.quickNotes.filter {
+                    $0.title.localizedCaseInsensitiveContains(noteSearchQuery) ||
+                    $0.content.localizedCaseInsensitiveContains(noteSearchQuery) ||
+                    ($0.folder?.localizedCaseInsensitiveContains(noteSearchQuery) ?? false)
                 }
                 
-                if viewModel.quickNotes.isEmpty {
+                if filteredNotes.isEmpty {
                     HStack {
                         Spacer()
-                        Text("No notes saved yet. Add one above!")
+                        Text("No matching notes found.")
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                            .padding(.vertical, 24)
+                            .padding(.vertical, 16)
                         Spacer()
                     }
-                    .background(Color.white.opacity(0.02))
-                    .cornerRadius(10)
                 } else {
                     let folderTree = viewModel.getNoteFolderTree()
-                    let uncategorized = viewModel.quickNotes.filter { $0.folder == nil || $0.folder?.isEmpty == true }
+                    let uncategorized = filteredNotes.filter { $0.folder == nil || $0.folder?.isEmpty == true }
                     
-                    VStack(alignment: .leading, spacing: 10) {
-                        // Uncategorized Saved Notes
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Uncategorized Notes
                         if !uncategorized.isEmpty {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 ForEach(uncategorized) { note in
                                     noteRow(for: note)
                                 }
@@ -2282,27 +2504,55 @@ extension DropdownView {
         }
     }
     
-    // Note Row Builder Helper
+    // Note Row Builder Helper (Compact List Row)
     private func noteRow(for note: QuickNote) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(note.title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                Text(note.content)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 8) {
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    editingNote = note
+                    newNoteTitle = note.title
+                    newNoteContent = note.content
+                    newNoteFolder = note.folder ?? ""
+                    isCreatingFullNote = false
+                    isNoteEditingMode = false
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(.blue.opacity(0.85))
+                    
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(note.title)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            
+                            if let folder = note.folder, !folder.isEmpty {
+                                Text(folder)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.orange.opacity(0.9))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Color.orange.opacity(0.12))
+                                    .cornerRadius(4)
+                            }
+                        }
+                        
+                        Text(note.dateCreated.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             
-            Spacer()
-            
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if isNoteSortActive {
                     let groupNotes = viewModel.quickNotes.filter { $0.folder == note.folder }
                     let noteIdx = groupNotes.firstIndex(where: { $0.id == note.id }) ?? 0
@@ -2340,7 +2590,7 @@ extension DropdownView {
                     }
                 }
                 
-                // Copy Content Button
+                // Direct Copy Button (Copies note content directly to clipboard with visual feedback)
                 Button(action: {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(note.content, forType: .string)
@@ -2355,29 +2605,23 @@ extension DropdownView {
                         }
                     }
                 }) {
-                    Image(systemName: copiedNoteId == note.id ? "checkmark.circle.fill" : "doc.on.doc")
-                        .font(.system(size: 11))
-                        .foregroundColor(copiedNoteId == note.id ? .green : .blue.opacity(0.85))
+                    HStack(spacing: 3) {
+                        Image(systemName: copiedNoteId == note.id ? "checkmark.circle.fill" : "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundColor(copiedNoteId == note.id ? .green : .blue.opacity(0.85))
+                        if copiedNoteId == note.id {
+                            Text("Copied")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.green)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(5)
                 }
                 .buttonStyle(.plain)
                 .help("Copy content to clipboard")
-                
-                // Edit Note Button
-                Button(action: {
-                    editingNote = note
-                    newNoteTitle = note.title
-                    newNoteContent = note.content
-                    newNoteFolder = note.folder ?? ""
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        isNoteFormExpanded = true
-                    }
-                }) {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.caption2)
-                        .foregroundColor(.blue.opacity(0.8))
-                }
-                .buttonStyle(.plain)
-                .help("Edit note")
                 
                 // Delete Note Button
                 Button(action: {
@@ -2392,9 +2636,13 @@ extension DropdownView {
                 .help("Delete note")
             }
         }
-        .padding(10)
-        .background(Color.white.opacity(0.03))
+        .padding(8)
+        .background(Color.white.opacity(0.04))
         .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
     
     // MARK: - AI Chat UI Section
