@@ -2399,57 +2399,44 @@ extension DropdownView {
     
     // MARK: - AI Chat UI Section
     
-    // MARK: - AI Chat UI Section
+    /// Extracted thread picker menu to avoid SwiftUI type-checker timeout from inline 'let' bindings
+    @ViewBuilder private var threadMenuContent: some View {
+        let uncategorized = viewModel.chatThreads.filter { $0.folder == nil || $0.folder?.isEmpty == true }
+        ForEach(uncategorized) { thread in
+            Button(action: { viewModel.selectChatThread(id: thread.id) }) {
+                HStack {
+                    Text(thread.title)
+                    if thread.id == viewModel.selectedThreadId { Image(systemName: "checkmark") }
+                }
+            }
+        }
+        let folders = Array(Set(viewModel.chatThreads.compactMap { $0.folder })).sorted()
+        if !folders.isEmpty { Divider() }
+        ForEach(folders, id: \.self) { folder in
+            let folderThreads = viewModel.chatThreads.filter { $0.folder == folder }
+            Menu(folder) {
+                ForEach(folderThreads) { thread in
+                    Button(action: { viewModel.selectChatThread(id: thread.id) }) {
+                        HStack {
+                            Text(thread.title)
+                            if thread.id == viewModel.selectedThreadId { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+            }
+        }
+        Divider()
+        Button(action: { viewModel.createNewChatThread() }) {
+            Label("New Chat", systemImage: "plus")
+        }
+    }
     
     private var aiChatSection: some View {
         VStack(spacing: 8) {
             // Thread Selection Control & Model Selection
             HStack(spacing: 6) {
                 Menu {
-                    // Uncategorized chat threads
-                    let uncategorized = viewModel.chatThreads.filter { $0.folder == nil || $0.folder?.isEmpty == true }
-                    ForEach(uncategorized) { thread in
-                        Button(action: {
-                            viewModel.selectChatThread(id: thread.id)
-                        }) {
-                            HStack {
-                                Text(thread.title)
-                                if thread.id == viewModel.selectedThreadId {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Folder groupings
-                    let folders = Array(Set(viewModel.chatThreads.compactMap { $0.folder })).sorted()
-                    if !folders.isEmpty {
-                        Divider()
-                    }
-                    ForEach(folders, id: \.self) { folder in
-                        Menu(folder) {
-                            let folderThreads = viewModel.chatThreads.filter { $0.folder == folder }
-                            ForEach(folderThreads) { thread in
-                                Button(action: {
-                                    viewModel.selectChatThread(id: thread.id)
-                                }) {
-                                    HStack {
-                                        Text(thread.title)
-                                        if thread.id == viewModel.selectedThreadId {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    Divider()
-                    Button(action: {
-                        viewModel.createNewChatThread()
-                    }) {
-                        Label("New Chat", systemImage: "plus")
-                    }
+                    threadMenuContent
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.left.and.bubble.right")
@@ -2499,8 +2486,7 @@ extension DropdownView {
                                     ForEach(providerModels, id: \.self) { model in
                                         let isFav = viewModel.favoriteModels.contains(model)
                                         Button(action: {
-                                            viewModel.selectedModel = model
-                                            UserDefaults.standard.set(model, forKey: "AISelectedModel")
+                                            viewModel.changeSelectedModel(model)
                                         }) {
                                             HStack {
                                                 Text(model.components(separatedBy: "/").last ?? model)
@@ -2525,8 +2511,7 @@ extension DropdownView {
                             Section("Favorite Models") {
                                 ForEach(viewModel.favoriteModels, id: \.self) { model in
                                     Button(action: {
-                                        viewModel.selectedModel = model
-                                        UserDefaults.standard.set(model, forKey: "AISelectedModel")
+                                        viewModel.changeSelectedModel(model)
                                     }) {
                                         HStack {
                                             Text(model.components(separatedBy: "/").last ?? model)
@@ -2783,26 +2768,35 @@ extension DropdownView {
                     Text("Chat with Local AI")
                         .font(.subheadline)
                         .fontWeight(.bold)
-                    Text("This interface runs your queries through the locally installed opencode TUI agent on your Mac in the background.")
+                    Text("This interface runs your queries through Local AI or background CLI agents (opencode, codex, antigravity) on your Mac.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     
-                    if !viewModel.isOpencodeInstalled {
+                    let activeModel = viewModel.selectedModel
+                    let isCodexSelected = activeModel.hasPrefix("codex/") || activeModel == "codex"
+                    let isAntigravitySelected = activeModel.hasPrefix("antigravity/") || activeModel == "antigravity"
+                    let isOpencodeSelected = activeModel.hasPrefix("opencode/") || activeModel == "opencode"
+                    
+                    let isMissingSelectedCLI = (isCodexSelected && !viewModel.isCodexInstalled) ||
+                                              (isAntigravitySelected && !viewModel.isAntigravityInstalled) ||
+                                              (isOpencodeSelected && !viewModel.isOpencodeInstalled)
+                    
+                    if isMissingSelectedCLI {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.yellow)
                                     .font(.system(size: 10))
-                                Text("opencode not detected")
+                                Text(isCodexSelected ? "codex CLI not detected" : (isAntigravitySelected ? "antigravity CLI not detected" : "opencode CLI not detected"))
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(.yellow)
                             }
-                            Text("To use this feature, please make sure you install opencode by running:")
+                            Text("To query models with this provider, install the CLI agent by running:")
                                 .font(.system(size: 9))
                                 .foregroundColor(.white.opacity(0.8))
-                            Text("brew install opencode")
+                            Text(isCodexSelected ? "npm i -g @openai/codex-cli" : (isAntigravitySelected ? "curl -sSL https://antigravity.ai/install.sh" : "brew install opencode"))
                                 .font(.system(size: 9, design: .monospaced))
                                 .padding(4)
                                 .background(Color.black.opacity(0.3))
@@ -2993,29 +2987,30 @@ extension DropdownView {
             }
             return true
         }
-        .overlay(
-            Group {
-                if isDraggingFolderOver {
-                    ZStack {
-                        Color.blue.opacity(0.12)
-                        
-                        VStack(spacing: 8) {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.system(size: 28))
-                                .foregroundColor(.blue)
-                            Text("Drop folder to attach context")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                        }
-                        .padding(20)
-                        .background(Color.black.opacity(0.85))
-                        .cornerRadius(12)
-                    }
-                    .transition(.opacity)
-                }
-            }
-        )
+        .overlay(dragFolderOverlayView)
         .animation(.easeInOut, value: isDraggingFolderOver)
+    }
+    
+    @ViewBuilder
+    private var dragFolderOverlayView: some View {
+        if isDraggingFolderOver {
+            ZStack {
+                Color.blue.opacity(0.12)
+                
+                VStack(spacing: 8) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 28))
+                        .foregroundColor(.blue)
+                    Text("Drop folder to attach context")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .padding(20)
+                .background(Color.black.opacity(0.85))
+                .cornerRadius(12)
+            }
+            .transition(.opacity)
+        }
     }
     
     private func submitChatMessage() {

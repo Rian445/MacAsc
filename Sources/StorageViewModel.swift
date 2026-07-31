@@ -28,6 +28,8 @@ class StorageViewModel: ObservableObject {
     @Published var selectedThreadId: UUID? = nil
     @Published var isAiResponding = false
     @Published var isOpencodeInstalled = false
+    @Published var isCodexInstalled = false
+    @Published var isAntigravityInstalled = false
     @Published var allowAiSystemActions = false
     @Published var enableDiskInsight = true
     @Published var enableCustomCommands = true
@@ -40,6 +42,9 @@ class StorageViewModel: ObservableObject {
     @Published var selectedModel: String = ""
     @Published var favoriteModels: [String] = []
     private var activeAiProcess: Process? = nil
+    private var cachedOpencodePath: String? = nil
+    private var cachedCodexPath: String? = nil
+    private var cachedAntigravityPath: String? = nil
     
     var selectedThread: ChatThread? {
         chatThreads.first(where: { $0.id == selectedThreadId })
@@ -455,6 +460,7 @@ class StorageViewModel: ObservableObject {
         let savedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
         if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") {
             self.selectedModel = "MacASC Local LLM"
+            UserDefaults.standard.set("MacASC Local LLM", forKey: "AISelectedModel")
         } else {
             self.selectedModel = savedModel
         }
@@ -469,10 +475,13 @@ class StorageViewModel: ObservableObject {
             ]
             UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         } else {
-            // Ensure MacASC Local LLM is at the top of favorites and remove gemini 3.5 flash
-            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") || $0.contains("gemini-3.5-flash") || $0.contains("Gemini 3.5") }
+            // Remove legacy Gemma models and purged gemini 3.5 flash
+            self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("gemini-3.5-flash") }
             if !self.favoriteModels.contains("MacASC Local LLM") {
                 self.favoriteModels.insert("MacASC Local LLM", at: 0)
+            }
+            if !self.favoriteModels.contains("opencode/deepseek-v4-flash-free") {
+                self.favoriteModels.append("opencode/deepseek-v4-flash-free")
             }
             UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         }
@@ -490,52 +499,159 @@ class StorageViewModel: ObservableObject {
         UserDefaults.standard.set(favoriteModels, forKey: "AIFavoriteModels")
     }
 
-    /// Queries the opencode CLI in the background to list all available models
+    /// Queries installed CLI agents (opencode, codex, antigravity) in background to list available models
     func loadAvailableModels() {
-        guard let binaryPath = getOpencodeBinaryPath() else { return }
+        // Note: checkCLIInstallations() is called by the caller (refresh/init) — no need to repeat here
         Task {
-            let models = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .background).async {
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: binaryPath)
-                    process.arguments = ["models"]
-                    
-                    let pipe = Pipe()
-                    process.standardOutput = pipe
-                    process.standardError = FileHandle.nullDevice
-                    
-                    do {
-                        try process.run()
-                        process.waitUntilExit()
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                        if let output = String(data: data, encoding: .utf8) {
-                            let lines = output.components(separatedBy: .newlines)
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty && !$0.contains(" ") && $0.contains("/") }
-                            continuation.resume(returning: lines)
-                            return
-                        }
-                    } catch {
-                        NSLog("Failed to load models: \(error.localizedDescription)")
+            var combinedModels: [String] = ["MacASC Local LLM"]
+            
+            // 1. Fetch opencode models if installed
+            if let opencodePath = getOpencodeBinaryPath() {
+                let opencodeModels = await fetchModelsFromCLI(path: opencodePath, args: ["models"])
+                for m in opencodeModels {
+                    let formatted = m.hasPrefix("opencode/") ? m : "opencode/\(m)"
+                    if !combinedModels.contains(formatted) {
+                        combinedModels.append(formatted)
                     }
-                    continuation.resume(returning: [String]())
+                }
+            }
+            
+            // 2. Fetch codex models dynamically if installed
+            if let codexPath = getCodexBinaryPath() {
+                let codexModels = await fetchCodexDynamicModels(path: codexPath)
+                for m in codexModels {
+                    let formatted = m.hasPrefix("codex/") ? m : "codex/\(m)"
+                    if !combinedModels.contains(formatted) {
+                        combinedModels.append(formatted)
+                    }
+                }
+            }
+            
+            // 3. Fetch antigravity models dynamically if installed
+            if let antigravityPath = getAntigravityBinaryPath() {
+                let antigravityModels = await fetchModelsFromCLI(path: antigravityPath, args: ["models"])
+                for m in antigravityModels {
+                    let formatted = m.hasPrefix("antigravity/") ? m : "antigravity/\(m)"
+                    if !combinedModels.contains(formatted) {
+                        combinedModels.append(formatted)
+                    }
                 }
             }
             
             await MainActor.run {
-                var list = ["MacASC Local LLM"]
-                for m in models {
-                    if !list.contains(m) {
-                        list.append(m)
-                    }
-                }
-                self.availableModels = list
+                self.availableModels = combinedModels
                 if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("270M") || self.selectedModel.contains("1B") {
                     self.selectedModel = "MacASC Local LLM"
                     UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
                 }
             }
         }
+    }
+    
+    /// Cached CLI environment with full PATH — built once on first use, reused for every process launch
+    private var _cliEnvironmentCache: [String: String]? = nil
+    
+    private func makeCLIEnvironment() -> [String: String] {
+        if let cached = _cliEnvironmentCache { return cached }
+        
+        var env = ProcessInfo.processInfo.environment
+        let currentPath = env["PATH"] ?? ""
+        
+        // Resolve nvm active node version dynamically (avoids stale /current symlink)
+        var nvmNodeBin = ""
+        let nvmVersionsDir = NSString(string: "~/.nvm/versions/node").expandingTildeInPath
+        if let versions = try? FileManager.default.contentsOfDirectory(atPath: nvmVersionsDir),
+           let latest = versions.sorted().last {
+            nvmNodeBin = "\(nvmVersionsDir)/\(latest)/bin"
+        }
+        
+        var extraPaths = [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+            NSString(string: "~/.npm-global/bin").expandingTildeInPath,
+            NSString(string: "~/.cargo/bin").expandingTildeInPath,
+            NSString(string: "~/.bun/bin").expandingTildeInPath,
+            NSString(string: "~/.local/bin").expandingTildeInPath,
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin"
+        ]
+        if !nvmNodeBin.isEmpty { extraPaths.insert(nvmNodeBin, at: 0) }
+        
+        var pathComponents = currentPath.components(separatedBy: ":").filter { !$0.isEmpty }
+        for p in extraPaths where !pathComponents.contains(p) {
+            pathComponents.insert(p, at: 0)
+        }
+        env["PATH"] = pathComponents.joined(separator: ":")
+        _cliEnvironmentCache = env
+        return env
+    }
+    
+    private func fetchModelsFromCLI(path: String, args: [String]) async -> [String] {
+        let capturedEnv = makeCLIEnvironment()
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .background).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = args
+                process.environment = capturedEnv
+                
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8) {
+                        let lines = output.components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty && !$0.contains(" ") && ($0.contains("/") || $0.contains("-")) }
+                        continuation.resume(returning: lines)
+                        return
+                    }
+                } catch {
+                    NSLog("Failed to query models from \(path): \(error.localizedDescription)")
+                }
+                continuation.resume(returning: [])
+            }
+        }
+    }
+    
+    /// Dynamically parses available/active models from Codex CLI output and user configuration (~/.codex/config.toml)
+    private func fetchCodexDynamicModels(path: String) async -> [String] {
+        var models = await fetchModelsFromCLI(path: path, args: ["models"])
+        
+        let configPath = NSString(string: "~/.codex/config.toml").expandingTildeInPath
+        if let content = try? String(contentsOfFile: configPath, encoding: .utf8) {
+            let lines = content.components(separatedBy: .newlines)
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("model =") || trimmed.hasPrefix("model=") {
+                    let parts = trimmed.components(separatedBy: "=")
+                    if parts.count >= 2 {
+                        let rawModel = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+                        if !rawModel.isEmpty && !models.contains(rawModel) {
+                            models.append(rawModel)
+                        }
+                    }
+                } else if trimmed.contains("gpt-") || trimmed.contains("o1") || trimmed.contains("o3") || trimmed.contains("codex-") {
+                    let matches = trimmed.components(separatedBy: CharacterSet(charactersIn: " \"'=:,\n"))
+                        .filter { $0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("codex-") }
+                    for m in matches {
+                        if !models.contains(m) {
+                            models.append(m)
+                        }
+                    }
+                }
+            }
+        }
+        
+        return models
     }
     
     /// Persists a Tweak setting toggle and reloads preferences
@@ -553,8 +669,9 @@ class StorageViewModel: ObservableObject {
         
         // Check for mo/mole installation
         checkMoleInstallation()
-        // Check for opencode installation
-        checkOpencodeInstallation()
+        // Check for CLI agent installations and reload available models
+        checkCLIInstallations()
+        loadAvailableModels()
         
         // Scan pinned folder sizes in background
         scanPinnedFolderSizes()
@@ -1201,24 +1318,124 @@ class StorageViewModel: ObservableObject {
     
     // MARK: - AI Chat Methods
     
-    /// Checks if opencode is installed on the user's system
-    func checkOpencodeInstallation() {
+    /// Checks all supported CLI agents (opencode, codex, antigravity) installation status and remaps paths
+    func checkCLIInstallations() {
+        // Invalidate all cached paths and environment so refresh forces a full re-scan
+        self.cachedOpencodePath = nil
+        self.cachedCodexPath = nil
+        self.cachedAntigravityPath = nil
+        self._cliEnvironmentCache = nil
+        
         self.isOpencodeInstalled = (getOpencodeBinaryPath() != nil)
+        self.isCodexInstalled = (getCodexBinaryPath() != nil)
+        self.isAntigravityInstalled = (getAntigravityBinaryPath() != nil)
     }
     
-    /// Finds the location of the opencode binary on the user's system
-    private func getOpencodeBinaryPath() -> String? {
-        let commonPaths = [
-            "/opt/homebrew/bin/opencode",
-            "/usr/local/bin/opencode"
-        ]
+    /// Backward compatible helper
+    func checkOpencodeInstallation() {
+        checkCLIInstallations()
+    }
+    
+    /// Universal binary path resolver that checks standard paths and falls back to dynamic shell environment lookup
+    private func findBinaryPath(names: [String], candidatePaths: [String]) -> String? {
         let fileManager = FileManager.default
-        for path in commonPaths {
-            if fileManager.fileExists(atPath: path) {
-                return path
+        
+        // 1. Check known candidate paths first (fastest)
+        for path in candidatePaths {
+            let expandedPath = NSString(string: path).expandingTildeInPath
+            if fileManager.fileExists(atPath: expandedPath) {
+                return expandedPath
             }
         }
+        
+        // 2. Dynamic ZSH shell fallback: query `which <name>` using user's environment PATH
+        for name in names {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-l", "-c", "which \(name)"]
+            process.environment = self.makeCLIEnvironment()
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !output.isEmpty, fileManager.fileExists(atPath: output) {
+                    return output
+                }
+            } catch {
+                // Ignore shell lookup errors
+            }
+        }
+        
         return nil
+    }
+    
+    /// Finds the location of the opencode binary on any Mac (cached for instant performance)
+    func getOpencodeBinaryPath() -> String? {
+        if let cached = cachedOpencodePath, FileManager.default.fileExists(atPath: cached) {
+            return cached
+        }
+        let path = findBinaryPath(
+            names: ["opencode"],
+            candidatePaths: [
+                "/opt/homebrew/bin/opencode",
+                "/usr/local/bin/opencode",
+                "~/.local/bin/opencode",
+                "~/.nvm/versions/node/current/bin/opencode",
+                "~/.bun/bin/opencode"
+            ]
+        )
+        cachedOpencodePath = path
+        return path
+    }
+    
+    /// Finds the location of the codex binary on any Mac (cached for instant performance)
+    func getCodexBinaryPath() -> String? {
+        if let cached = cachedCodexPath, FileManager.default.fileExists(atPath: cached) {
+            return cached
+        }
+        let path = findBinaryPath(
+            names: ["codex"],
+            candidatePaths: [
+                "/opt/homebrew/bin/codex",
+                "/usr/local/bin/codex",
+                "~/.npm-global/bin/codex",
+                "~/.cargo/bin/codex",
+                "~/.local/bin/codex",
+                "~/.nvm/versions/node/current/bin/codex",
+                "~/.bun/bin/codex"
+            ]
+        )
+        cachedCodexPath = path
+        return path
+    }
+    
+    /// Finds the location of the antigravity binary on any Mac (cached for instant performance)
+    func getAntigravityBinaryPath() -> String? {
+        if let cached = cachedAntigravityPath, FileManager.default.fileExists(atPath: cached) {
+            return cached
+        }
+        let path = findBinaryPath(
+            names: ["agy", "antigravity"],
+            candidatePaths: [
+                "/opt/homebrew/bin/agy",
+                "/usr/local/bin/agy",
+                "/opt/homebrew/bin/antigravity",
+                "/usr/local/bin/antigravity",
+                "~/.gemini/bin/agy",
+                "~/.gemini/bin/antigravity",
+                "~/.antigravity/bin/antigravity",
+                "~/.local/bin/agy",
+                "~/.local/bin/antigravity"
+            ]
+        )
+        cachedAntigravityPath = path
+        return path
     }
     
     /// Loads the AI chat history and threads from UserDefaults
@@ -1291,11 +1508,25 @@ class StorageViewModel: ObservableObject {
         UserDefaults.standard.set(allowAiSystemActions, forKey: "AIAllowSystemActions")
     }
     
+    /// Updates the selected model and persists it to thread and global preferences
+    func changeSelectedModel(_ model: String) {
+        self.selectedModel = model
+        UserDefaults.standard.set(model, forKey: "AISelectedModel")
+        if let threadId = selectedThreadId,
+           let idx = chatThreads.firstIndex(where: { $0.id == threadId }) {
+            self.chatThreads[idx].selectedModel = model
+            saveChatHistory()
+        }
+    }
+    
     /// Creates a new chat thread and selects it
     func createNewChatThread() {
         // If there is already an empty thread, select it instead of creating a duplicate
         if let existingEmpty = chatThreads.first(where: { $0.messages.isEmpty && $0.title == "New Chat" }) {
             self.selectedThreadId = existingEmpty.id
+            if let threadModel = existingEmpty.selectedModel, !threadModel.isEmpty {
+                self.selectedModel = threadModel
+            }
             saveChatHistory()
             return
         }
@@ -1305,6 +1536,8 @@ class StorageViewModel: ObservableObject {
             title: "New Chat",
             activeSessionId: nil,
             attachedDirectory: nil,
+            attachedDirectories: nil,
+            selectedModel: self.selectedModel.isEmpty ? "MacASC Local LLM" : self.selectedModel,
             messages: [],
             dateCreated: Date()
         )
@@ -1328,11 +1561,21 @@ class StorageViewModel: ObservableObject {
     func selectChatThread(id: UUID) {
         stopAiMessageQuery()
         self.selectedThreadId = id
+        if let idx = chatThreads.firstIndex(where: { $0.id == id }),
+           let threadModel = chatThreads[idx].selectedModel, !threadModel.isEmpty {
+            self.selectedModel = threadModel
+        }
         saveChatHistory()
     }
     
-    /// Deletes a chat thread by ID
+    /// Deletes a chat thread by ID and removes its server-side session from the provider
     func deleteChatThread(id: UUID) {
+        // Capture session info before removing the thread
+        if let thread = chatThreads.first(where: { $0.id == id }),
+           let sessionId = thread.activeSessionId, !sessionId.isEmpty {
+            let model = thread.selectedModel ?? selectedModel
+            deleteRemoteSession(sessionId: sessionId, model: model)
+        }
         if selectedThreadId == id {
             stopAiMessageQuery()
         }
@@ -1345,11 +1588,16 @@ class StorageViewModel: ObservableObject {
         saveChatHistory()
     }
     
-    /// Clears messages in the active chat thread and resets its session
+    /// Clears messages in the active chat thread and removes its server-side session
     func clearChatHistory() {
         stopAiMessageQuery()
         if let threadId = selectedThreadId,
            let idx = chatThreads.firstIndex(where: { $0.id == threadId }) {
+            // Delete the remote session before clearing
+            if let sessionId = chatThreads[idx].activeSessionId, !sessionId.isEmpty {
+                let model = chatThreads[idx].selectedModel ?? selectedModel
+                deleteRemoteSession(sessionId: sessionId, model: model)
+            }
             self.chatThreads[idx].messages.removeAll()
             self.chatThreads[idx].activeSessionId = nil
             self.chatThreads[idx].title = "New Chat"
@@ -1357,9 +1605,66 @@ class StorageViewModel: ObservableObject {
         }
     }
     
+    /// Fires a background process to delete a remote session from the provider CLI
+    private func deleteRemoteSession(sessionId: String, model: String) {
+        Task.detached(priority: .background) {
+            let cliType: String
+            let binaryPath: String?
+            
+            if model.hasPrefix("codex/") || model == "codex" {
+                cliType = "codex"
+                binaryPath = await self.getCodexBinaryPath()
+            } else if model.hasPrefix("antigravity/") || model == "antigravity"
+                        || model.hasPrefix("agy/") || model == "agy" {
+                cliType = "antigravity"
+                binaryPath = await self.getAntigravityBinaryPath()
+            } else if model == "MacASC Local LLM" {
+                return // Local LLM has no remote session to delete
+            } else {
+                cliType = "opencode"
+                binaryPath = await self.getOpencodeBinaryPath()
+            }
+            
+            guard let path = binaryPath else { return }
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: path)
+            process.environment = await self.makeCLIEnvironment()
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            process.standardInput = FileHandle.nullDevice
+            
+            // Each CLI has its own session deletion command
+            switch cliType {
+            case "opencode":
+                process.arguments = ["session", "delete", sessionId]
+            case "antigravity":
+                // agy does not expose a delete command; conversations expire on their own
+                return
+            case "codex":
+                // codex does not expose a session delete command; sessions expire on their own
+                return
+            default:
+                return
+            }
+            
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                NSLog("Failed to delete remote session \(sessionId): \(error.localizedDescription)")
+            }
+        }
+    }
+    
     /// Sends a query message to the AI (opencode binary) in the background
     func sendChatMessage(_ text: String) {
         guard !text.isEmpty, let threadId = selectedThreadId else { return }
+        
+        // Terminate any active process first to avoid orphan/overlapping tasks
+        if activeAiProcess != nil {
+            stopAiMessageQuery()
+        }
         
         // Find current thread index
         guard let idx = chatThreads.firstIndex(where: { $0.id == threadId }) else { return }
@@ -1406,12 +1711,35 @@ class StorageViewModel: ObservableObject {
         }
         
         Task.detached(priority: .userInitiated) {
-            guard let binaryPath = await self.getOpencodeBinaryPath() else {
+            let model = await self.selectedModel
+            
+            var binaryPath: String? = nil
+            var cliType: String = "opencode"
+            var targetModelArg = model
+            
+            if model.hasPrefix("codex/") || model == "codex" {
+                cliType = "codex"
+                binaryPath = await self.getCodexBinaryPath()
+                targetModelArg = model.replacingOccurrences(of: "codex/", with: "")
+            } else if model.hasPrefix("antigravity/") || model == "antigravity" {
+                cliType = "antigravity"
+                binaryPath = await self.getAntigravityBinaryPath()
+                targetModelArg = model.replacingOccurrences(of: "antigravity/", with: "")
+            } else {
+                cliType = "opencode"
+                binaryPath = await self.getOpencodeBinaryPath()
+                targetModelArg = model
+            }
+            
+            let capturedCliType = cliType
+            guard let validBinary = binaryPath else {
                 await MainActor.run {
                     if let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }) {
+                        let installCmd = capturedCliType == "codex" ? "npm i -g @openai/codex-cli" :
+                                        (capturedCliType == "antigravity" ? "curl -sSL https://antigravity.ai/install.sh" : "brew install opencode")
                         let errorMessage = ChatMessage(
                             id: UUID(),
-                            text: "Error: Could not find 'opencode' binary. Please verify that opencode is installed at /opt/homebrew/bin/opencode or /usr/local/bin/opencode.",
+                            text: "Error: Could not find '\(capturedCliType)' binary. Please install '\(capturedCliType)' by running:\n\(installCmd)",
                             isUser: false,
                             timestamp: Date()
                         )
@@ -1424,7 +1752,8 @@ class StorageViewModel: ObservableObject {
             }
             
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: binaryPath)
+            process.executableURL = URL(fileURLWithPath: validBinary)
+            process.environment = await self.makeCLIEnvironment()
             
             // Prepend context info to query if attached to thread
             var textToSend = text
@@ -1433,34 +1762,76 @@ class StorageViewModel: ObservableObject {
                 textToSend = "Context Path: \(path)\n\n\(text)"
             }
             
-            var arguments = ["run", textToSend, "--dir", "/tmp"]
-            
-            let model = await self.selectedModel
-            if !model.isEmpty {
-                arguments.append("-m")
-                arguments.append(model)
-            }
-            
-            // Auto-approve permissions if enabled by user
+            var arguments: [String] = []
             let allowActions = await self.allowAiSystemActions
-            if allowActions {
-                arguments.append("--dangerously-skip-permissions")
-            }
-            
-            // Check if this thread has an active session ID to resume
             let threadSessionId = await self.chatThreads.first(where: { $0.id == threadId })?.activeSessionId
-            if let sessionId = threadSessionId {
-                arguments.append("--session")
-                arguments.append(sessionId)
+            
+            if cliType == "codex" {
+                // codex exec reads the prompt from stdin.
+                // Use the thread's attached directory as the working dir if available (may be a git repo),
+                // otherwise fall back to the user's home directory. Always pass --skip-git-repo-check
+                // so codex doesn't refuse to run when outside a trusted repo.
+                let codexWorkDir: String
+                if let dir = attachedDir {
+                    var isDirectory: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: dir, isDirectory: &isDirectory), isDirectory.boolValue {
+                        codexWorkDir = dir
+                    } else {
+                        codexWorkDir = URL(fileURLWithPath: dir).deletingLastPathComponent().path
+                    }
+                } else {
+                    codexWorkDir = NSString(string: "~/Documents").expandingTildeInPath
+                }
+                arguments = ["exec", "-C", codexWorkDir, "--skip-git-repo-check"]
+                if !targetModelArg.isEmpty && targetModelArg != "codex" {
+                    arguments.append("-m")
+                    arguments.append(targetModelArg)
+                }
+                if allowActions {
+                    arguments.append("--dangerously-bypass-approvals-and-sandbox")
+                }
+            } else if cliType == "antigravity" {
+                arguments = ["-p", textToSend]
+                if !targetModelArg.isEmpty && targetModelArg != "antigravity" && targetModelArg != "agy" {
+                    arguments.append("--model")
+                    arguments.append(targetModelArg)
+                }
+                if allowActions {
+                    arguments.append("--dangerously-skip-permissions")
+                }
+                if let sessionId = threadSessionId, !sessionId.isEmpty {
+                    arguments.append("--conversation=\(sessionId)")
+                }
             } else {
-                // First query in thread: request logs to scrape the newly generated session ID
-                arguments.append("--print-logs")
+                arguments = ["run", textToSend, "--dir", "/tmp"]
+                if !targetModelArg.isEmpty && targetModelArg != "opencode" {
+                    arguments.append("-m")
+                    arguments.append(targetModelArg)
+                }
+                if allowActions {
+                    arguments.append("--dangerously-skip-permissions")
+                }
+                if let sessionId = threadSessionId, !sessionId.isEmpty {
+                    arguments.append("--session")
+                    arguments.append(sessionId)
+                } else {
+                    arguments.append("--print-logs")
+                }
             }
             
             process.arguments = arguments
             
-            // Set input to null device so it runs headless and won't hang waiting for stdin
-            process.standardInput = FileHandle.nullDevice
+            // For codex: pipe the prompt text via stdin since codex exec reads from stdin
+            // For other CLIs: use null device since prompt is passed as a CLI argument
+            if cliType == "codex" {
+                let stdinPipe = Pipe()
+                process.standardInput = stdinPipe
+                let promptData = textToSend.data(using: .utf8) ?? Data()
+                stdinPipe.fileHandleForWriting.write(promptData)
+                stdinPipe.fileHandleForWriting.closeFile()
+            } else {
+                process.standardInput = FileHandle.nullDevice
+            }
             
             let outputPipe = Pipe()
             process.standardOutput = outputPipe
@@ -1476,21 +1847,56 @@ class StorageViewModel: ObservableObject {
                 
                 let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
                 let rawOutput = String(data: data, encoding: .utf8) ?? ""
-                let cleanedOutput = await self.cleanOpencodeOutput(rawOutput)
+                let baseCleanedOutput = await self.cleanOpencodeOutput(rawOutput)
                 
                 await MainActor.run {
                     // Check if this was the active process we expected (not cancelled)
                     if self.activeAiProcess === process {
                         if let threadIdx = self.chatThreads.firstIndex(where: { $0.id == threadId }) {
-                            // Extract session ID if we don't have one yet for this thread
-                            if self.chatThreads[threadIdx].activeSessionId == nil {
-                                if let sessionRange = rawOutput.range(of: "ses_[a-zA-Z0-9]+", options: .regularExpression) {
-                                    let matchedId = String(rawOutput[sessionRange])
-                                    self.chatThreads[threadIdx].activeSessionId = matchedId
+                            var textToDisplay = baseCleanedOutput
+                            
+                            // Check if opencode or CLI returned a server/session error
+                            let isServerError = rawOutput.contains("UnknownError") || rawOutput.contains("Unexpected server error")
+                            if isServerError {
+                                // Clear broken session ID so subsequent retries start fresh
+                                self.chatThreads[threadIdx].activeSessionId = nil
+                                
+                                // Extract error ref code if present
+                                var errorRef = ""
+                                if let refRange = rawOutput.range(of: "\"ref\":\\s*\"([^\"]+)\"", options: .regularExpression) {
+                                    let match = String(rawOutput[refRange])
+                                    errorRef = match.replacingOccurrences(of: "\"ref\":", with: "").replacingOccurrences(of: "\"", with: "").trimmingCharacters(in: .whitespaces)
+                                }
+                                let refNotice = errorRef.isEmpty ? "" : " (Ref: \(errorRef))"
+                                textToDisplay = "⚠️ Opencode Server Error: The model provider returned a temporary server error\(refNotice). Your session has been reset — please try sending your message again."
+                            } else {
+                                // Extract or update session ID for this thread
+                                if capturedCliType == "antigravity" {
+                                    if let match = rawOutput.range(of: "--conversation=([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[a-zA-Z0-9_-]+)", options: .regularExpression) {
+                                        let fullMatch = String(rawOutput[match])
+                                        let extracted = fullMatch.replacingOccurrences(of: "--conversation=", with: "")
+                                        self.chatThreads[threadIdx].activeSessionId = extracted
+                                    } else if let uuidRange = rawOutput.range(of: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", options: .regularExpression) {
+                                        let matchedId = String(rawOutput[uuidRange])
+                                        self.chatThreads[threadIdx].activeSessionId = matchedId
+                                    }
+                                } else if capturedCliType == "codex" {
+                                    if let sessionRange = rawOutput.range(of: "ses_[a-zA-Z0-9]+", options: .regularExpression) {
+                                        let matchedId = String(rawOutput[sessionRange])
+                                        self.chatThreads[threadIdx].activeSessionId = matchedId
+                                    } else if let uuidRange = rawOutput.range(of: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", options: .regularExpression) {
+                                        let matchedId = String(rawOutput[uuidRange])
+                                        self.chatThreads[threadIdx].activeSessionId = matchedId
+                                    }
+                                } else {
+                                    if let sessionRange = rawOutput.range(of: "ses_[a-zA-Z0-9]+", options: .regularExpression) {
+                                        let matchedId = String(rawOutput[sessionRange])
+                                        self.chatThreads[threadIdx].activeSessionId = matchedId
+                                    }
                                 }
                             }
                             
-                            let aiMessage = ChatMessage(id: UUID(), text: cleanedOutput, isUser: false, timestamp: Date())
+                            let aiMessage = ChatMessage(id: UUID(), text: textToDisplay, isUser: false, timestamp: Date())
                             self.chatThreads[threadIdx].messages.append(aiMessage)
                             self.isAiResponding = false
                             self.activeAiProcess = nil
@@ -1516,59 +1922,129 @@ class StorageViewModel: ObservableObject {
     
     /// Launches macOS Terminal and resumes the active thread's session ID in an interactive session
     func openActiveThreadInTerminal() {
-        guard let binaryPath = getOpencodeBinaryPath() else { return }
+        let model = selectedModel
+        var binaryPath: String? = nil
+        var cliName = "opencode"
+        var cleanModelName = model
         
-        var sessionArg = ""
-        if let threadId = selectedThreadId,
-           let thread = chatThreads.first(where: { $0.id == threadId }),
-           let sessionId = thread.activeSessionId {
-            sessionArg = " --session \(sessionId)"
+        if model.hasPrefix("codex/") || model == "codex" {
+            binaryPath = getCodexBinaryPath()
+            cliName = "codex"
+            cleanModelName = model.replacingOccurrences(of: "codex/", with: "")
+        } else if model.hasPrefix("antigravity/") || model == "antigravity" || model.hasPrefix("agy/") || model == "agy" {
+            binaryPath = getAntigravityBinaryPath()
+            cliName = "antigravity"
+            cleanModelName = model.replacingOccurrences(of: "antigravity/", with: "").replacingOccurrences(of: "agy/", with: "")
+        } else {
+            binaryPath = getOpencodeBinaryPath()
+            cliName = "opencode"
+            cleanModelName = model
         }
         
-        var dirArg = ""
+        guard let validBinary = binaryPath else { return }
+        
+        var execCommand = "\"\(validBinary)\""
+        var sessionDesc = "New Session"
+        var dirDesc = "None"
+        
+        // 1. Attached Directory & cd location formatting
+        var cdDirectory = NSString(string: "~/Documents").expandingTildeInPath
+        let attachments: [String]
+        if let threadId = selectedThreadId,
+           let thread = chatThreads.first(where: { $0.id == threadId }) {
+            attachments = thread.allAttachments
+        } else {
+            attachments = []
+        }
+        
+        if !attachments.isEmpty {
+            dirDesc = attachments.joined(separator: ", ")
+            
+            // Primary cd directory is the first attached path (or its parent directory if it's a file)
+            if let firstPath = attachments.first {
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: firstPath, isDirectory: &isDir) && isDir.boolValue {
+                    cdDirectory = firstPath
+                } else {
+                    cdDirectory = URL(fileURLWithPath: firstPath).deletingLastPathComponent().path
+                }
+            }
+            
+            if cliName == "antigravity" {
+                for path in attachments {
+                    var targetPath = path
+                    var isDir: ObjCBool = false
+                    if !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) || !isDir.boolValue {
+                        targetPath = URL(fileURLWithPath: path).deletingLastPathComponent().path
+                    }
+                    execCommand += " --add-dir \"\(targetPath)\""
+                }
+            } else if cliName == "codex" {
+                execCommand += " -C \"\(cdDirectory)\""
+            }
+        } else if cliName == "codex" {
+            execCommand += " -C \"\(cdDirectory)\""
+        }
+        
+        // 2. Session ID flag formatting
         if let threadId = selectedThreadId,
            let thread = chatThreads.first(where: { $0.id == threadId }),
-           let path = thread.attachedDirectory {
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
-                dirArg = " \"\(path)\""
+           let sessionId = thread.activeSessionId, !sessionId.isEmpty {
+            sessionDesc = sessionId
+            if cliName == "antigravity" {
+                execCommand += " --conversation=\(sessionId)"
+            } else if cliName == "codex" {
+                execCommand += " resume \(sessionId)"
             } else {
-                let parentFolder = URL(fileURLWithPath: path).deletingLastPathComponent().path
-                dirArg = " \"\(parentFolder)\""
+                execCommand += " --session \(sessionId)"
+            }
+        } else {
+            if cliName == "antigravity" {
+                execCommand += " --continue"
             }
         }
         
-        var modelArg = ""
-        if !selectedModel.isEmpty {
-            modelArg = " -m \(selectedModel)"
+        // 3. Model flag formatting
+        if !cleanModelName.isEmpty && cleanModelName != cliName {
+            if cliName == "antigravity" {
+                execCommand += " --model \(cleanModelName)"
+            } else {
+                execCommand += " -m \(cleanModelName)"
+            }
+        }
+        
+        // Auto-approve permissions flag if enabled
+        if allowAiSystemActions {
+            if cliName == "codex" {
+                execCommand += " --dangerously-bypass-approvals-and-sandbox"
+            } else {
+                execCommand += " --dangerously-skip-permissions"
+            }
         }
         
         let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent("resume_opencode_session.command")
+        let fileURL = tempDir.appendingPathComponent("resume_\(cliName)_session.command")
         
         let scriptContent = """
         #!/bin/bash
         clear
-        echo "=== Resuming Mac ASC AI Session in Terminal ==="
-        echo "Session ID: \(sessionArg.isEmpty ? "New Session" : sessionArg)"
-        echo "Attached Dir: \(dirArg.isEmpty ? "None" : dirArg)"
-        echo "Selected Model: \(selectedModel.isEmpty ? "Default" : selectedModel)"
+        echo "=== Resuming Mac ASC AI (\(cliName)) Session in Terminal ==="
+        echo "Session ID: \(sessionDesc)"
+        echo "Attached Dir: \(dirDesc)"
+        echo "Selected Model: \(cleanModelName.isEmpty ? "Default" : cleanModelName)"
         echo "================================================="
-        "\(binaryPath)"\(dirArg)\(sessionArg)\(modelArg)
+        cd "\(cdDirectory)"
+        \(execCommand)
         exec $SHELL
         """
         
         do {
             try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
-            
-            // Set POSIX execution permissions (chmod +x)
             let attributes = [FileAttributeKey.posixPermissions: NSNumber(value: 0o755)]
             try FileManager.default.setAttributes(attributes, ofItemAtPath: fileURL.path)
-            
-            // Open the .command file with NSWorkspace to launch it in Terminal
             NSWorkspace.shared.open(fileURL)
         } catch {
-            NSLog("Failed to launch opencode in Terminal: \(error.localizedDescription)")
+            NSLog("Failed to launch \(cliName) in Terminal: \(error.localizedDescription)")
         }
     }
     
@@ -1656,7 +2132,7 @@ class StorageViewModel: ObservableObject {
         }
     }
     
-    /// Filters and cleans the TUI/progress output from opencode stdout
+    /// Filters and cleans the TUI/progress output from opencode/codex/antigravity stdout
     private func cleanOpencodeOutput(_ raw: String) -> String {
         var cleaned = raw
         
@@ -1666,22 +2142,90 @@ class StorageViewModel: ObservableObject {
             cleaned = escRegex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
         }
         
-        // 2. Strip raw bracket style sequences (like "[0m", "[?25h" that lost their ESC character)
+        // 2. Strip raw bracket-style sequences (e.g. "[0m", "[?25h" that lost their ESC byte)
         if let bracketRegex = try? NSRegularExpression(pattern: "\\[\\??[0-9;]*[a-zA-Z]", options: []) {
             let range = NSRange(cleaned.startIndex..., in: cleaned)
             cleaned = bracketRegex.stringByReplacingMatches(in: cleaned, options: [], range: range, withTemplate: "")
         }
         
-        // 3. Line by line cleaning (filter build logs and timestamp logs)
+        // 3. Role-aware line-by-line filtering
+        //
+        // Codex output structure after the header block:
+        //   user
+        //   <prompt sent by user>   ← SKIP — this is what we sent, not the AI response
+        //
+        //   codex
+        //   <AI response>           ← KEEP
+        //   tokens used             ← STOP — everything below is metadata + duplicate
+        //   12,180
+        //   <AI response again>
+        
         let lines = cleaned.components(separatedBy: .newlines)
         var filteredLines: [String] = []
+        var skipHeader = false        // true while inside the '--------' banner block
+        var inUserSection = false     // true while reading the echoed user prompt lines
+        var inCodexSection = false    // true while reading the actual AI response lines
+        
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Skip build loader blocks and background log prints
+            
+            // Skip opencode build / log lines
             if trimmed.hasPrefix("> build ·") || trimmed.hasPrefix("> build") || trimmed.hasPrefix("timestamp=") {
                 continue
             }
-            filteredLines.append(line)
+            
+            // Toggle skip inside the codex banner block (between '--------' delimiters)
+            if trimmed == "--------" {
+                skipHeader.toggle()
+                continue
+            }
+            if skipHeader { continue }
+            
+            // Stop at "tokens used" — codex duplicates the response below this line
+            if trimmed == "tokens used" { break }
+            
+            // Skip meta lines that appear before/outside the banner
+            if trimmed.hasPrefix("Reading prompt from stdin")
+                || trimmed.hasPrefix("OpenAI Codex v")
+                || trimmed.hasPrefix("session id:")
+                || trimmed.hasPrefix("workdir:")
+                || trimmed.hasPrefix("model:")
+                || trimmed.hasPrefix("provider:")
+                || trimmed.hasPrefix("approval:")
+                || trimmed.hasPrefix("sandbox:")
+                || trimmed.hasPrefix("reasoning effort:")
+                || trimmed.hasPrefix("reasoning summaries:") {
+                continue
+            }
+            
+            // Detect role section transitions
+            if trimmed == "user" {
+                inUserSection = true
+                inCodexSection = false
+                continue
+            }
+            if trimmed == "codex" {
+                inUserSection = false
+                inCodexSection = true
+                continue
+            }
+            
+            // Skip lines that belong to the echoed user prompt section
+            if inUserSection { continue }
+            
+            // Collect lines only when we are inside the codex response section
+            if inCodexSection {
+                filteredLines.append(line)
+            }
+        }
+        
+        // If no role sections found (opencode / antigravity output), use all non-filtered lines
+        if !inCodexSection && filteredLines.isEmpty {
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("> build ·") || trimmed.hasPrefix("> build") || trimmed.hasPrefix("timestamp=") { continue }
+                filteredLines.append(line)
+            }
         }
         
         let joined = filteredLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1865,6 +2409,7 @@ struct ChatThread: Identifiable, Codable, Equatable {
     var activeSessionId: String?
     var attachedDirectory: String?
     var attachedDirectories: [String]?
+    var selectedModel: String?
     var messages: [ChatMessage]
     let dateCreated: Date
     var folder: String?
