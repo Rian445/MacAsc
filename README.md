@@ -221,5 +221,5 @@ brew install --cask macasc
 
 * **Changelog**: Read [CHANGELOG.md](CHANGELOG.md) for version release notes.
 * **Privacy Policy**: Read [PRIVACY.md](PRIVACY.md) for full data privacy details.
-* **Architecture Docs**: Read [LOCAL_LLM_ARCHITECTURE.md](LOCAL_LLM_ARCHITECTURE.md) for technical inference details.
+* **Architecture Docs**: Read [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for technical multi-agent inference details.
 * **License**: Open-source under the [MIT License](LICENSE).
