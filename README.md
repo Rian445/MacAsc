@@ -19,10 +19,13 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 ## ✨ Key Features
 
 * **🪟 Premium Glassmorphic UI**: Uses AppKit's native backdrop-blur transparency (`NSVisualEffectView` layered with a 45% dark opacity tint) to create a wallpaper-bleeding menu bar dropdown that respects light and dark modes dynamically.
-* **🤖 Multi-Model AI Assistant Panel**:
+* **🤖 Multi-Agent AI Assistant Panel**:
   * **100% Offline Local LLM (Google Gemma 3 1B Instruct)**: Embedded Apple Metal GPU-accelerated GGUF neural inference engine (`gemma-1b.gguf`) running 100% locally on your Mac's GPU with zero internet connection or python/CLI dependencies.
-  * **Multi-CLI Agent Support (`opencode`, `codex`, `antigravity`)**: Seamlessly chat with installed CLI agents directly inside the app. Dynamically parses models from your system binaries and `~/.codex/config.toml`.
-  * **Provider Model Preservation**: Preserves full provider model identifiers (e.g. `opencode/deepseek-v4-flash-free`) to ensure zero API endpoint errors.
+  * **Multi-CLI Agent Compatibility (`opencode` + `codex` + `antigravity`)**: Fully compatible with your system-installed AI CLI tools:
+    * ⚡ **`opencode` CLI**: Execute models from `opencode` (e.g. `opencode/deepseek-v4-flash-free`, `opencode/big-pickle`). Includes automatic session discovery and remote session cleanup on thread deletion.
+    * 🤖 **OpenAI `codex` CLI**: Seamlessly run Codex models (`gpt-5.5`, `gpt-4o`) via `stdin` prompt piping with auto-directory context.
+    * 🌌 **Google `antigravity` (`agy`) CLI**: Execute Google Antigravity models (`gemini-3.6-flash-medium`, `gemini-3.5-flash-low`) with multi-path context flag mapping (`--add-dir`).
+  * **Provider Model Preservation**: Preserves full provider model identifiers (e.g. `opencode/deepseek-v4-flash-free`) to ensure zero API endpoint resolution errors.
   * **Interactive Terminal Launcher**: Launch active chat sessions directly into macOS Terminal (`cd "<attached_path>"`) with single and multi-path file/folder attachment support.
   * **Automatic Server Session Cleanup**: Deletes server-side sessions on `opencode` automatically when a thread is deleted or cleared.
   * **Zero Idle Memory Footprint**: Spawns processes strictly on-demand and terminates immediately upon response completion (`0 MB RAM` when idle).
@@ -53,12 +56,102 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
 
 ---
 
+## 🏗️ AI Architecture & Memory Management
+
+Mac ASC uses an **On-Demand Subprocess Execution Model**. Unlike traditional AI desktop apps that run background daemons or heavy Chromium/Electron processes in memory, Mac ASC maintains a **0 MB idle RAM footprint** for AI execution.
+
+### 📊 Visual Execution Pipeline
+
+```mermaid
+graph TD
+    User([User Prompt in Mac ASC UI]) --> VM[StorageViewModel]
+    
+    VM -->|Model Selection Check| ModelRouter{Selected Model?}
+    
+    %% Local LLM Path
+    ModelRouter -->|"MacASC Local LLM"| LocalEngine[LocalAIEngine.swift]
+    LocalEngine -->|Spawn On-Demand Process| LlamaProcess[Process: llama-cli]
+    LlamaProcess -->|Apple Metal GPU Acceleration| Metal[libggml-metal.dylib + Gemma 3 1B]
+    Metal -->|Stream Output Tokens| LocalEngine
+    LlamaProcess -->|Output Finished| TerminateLocal[Process Terminates & Frees RAM]
+    TerminateLocal -->|0 MB Idle RAM| macOS1[Memory Reclaimed by macOS]
+
+    %% CLI Agents Path
+    ModelRouter -->|"opencode / codex / antigravity"| CLIRunner[Process Runner & PATH Resolver]
+    CLIRunner -->|opencode run| Opencode[Process: opencode]
+    CLIRunner -->|codex exec via stdin| Codex[Process: codex]
+    CLIRunner -->|agy -p| AGY[Process: antigravity]
+    
+    Opencode -->|Stream Response| VM
+    Codex -->|Stream Response| VM
+    AGY -->|Stream Response| VM
+    
+    Opencode -->|waitUntilExit| TerminateCLI[Process Terminates Immediately]
+    Codex -->|waitUntilExit| TerminateCLI
+    AGY -->|waitUntilExit| TerminateCLI
+    TerminateCLI -->|0 MB Idle RAM| macOS2[Memory Reclaimed by macOS]
+```
+
+### ⚡ How Memory is Managed:
+1. **Prompt Trigger**: When a user submits a prompt, `StorageViewModel` spawns a background `Process()`.
+2. **Token Generation**: 
+   - **Local LLM**: Executes `llama-cli` with Metal GPU acceleration (`libggml-metal.dylib`), streaming tokens to the UI.
+   - **CLI Agents**: Executes `opencode`, `codex`, or `antigravity` via universal PATH resolution (`makeCLIEnvironment()`).
+3. **Instant Process Termination**: As soon as token generation completes, `process.waitUntilExit()` finishes, `activeAiProcess` is set to `nil`, and macOS reclaims 100% of the process memory.
+4. **Idle State**: Between chat queries, **no AI daemon runs in memory**. Added RAM footprint is **0 MB**.
+
+---
+
+## 🔄 Session Hash Persistence & Interactive Terminal Resume
+
+Mac ASC automatically captures and remembers CLI session hashes so you can seamlessly transition between in-app chat and interactive Terminal sessions:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant MacASC as Mac ASC App
+    participant CLI as Agent CLI
+    participant Term as macOS Terminal
+
+    User->>MacASC: Send Prompt ("Fix login bug")
+    MacASC->>CLI: Execute CLI Agent Process
+    CLI-->>MacASC: Return Response & Session Hash (e.g. ses_04aaa...)
+    MacASC->>MacASC: Save activeSessionId into ChatThread (UserDefaults)
+    
+    User->>MacASC: Click "Open in Terminal" Icon
+    MacASC->>Term: Generate & Exec Temp Script (cd "<workspace>" && cli --session ses_04aaa...)
+    Term-->>User: Interactive Terminal Session Resumed with Full History!
+```
+
+### 🔑 How Session Hashing Works:
+1. **Hash Extraction**: On the first prompt in a thread, `StorageViewModel` parses `stdout` logs using regex to capture the CLI agent's unique session hash (`ses_[a-zA-Z0-9]+` for `opencode`/`codex` or `--conversation=<uuid>` for `antigravity`).
+2. **Thread Persistence**: The session hash is saved into `ChatThread.activeSessionId` inside macOS `UserDefaults`.
+3. **In-App Continuity**: All subsequent prompts in that thread append `--session <sessionId>` or `--conversation=<sessionId>`, maintaining full conversation context.
+4. **Terminal Handoff**: Clicking the **Terminal icon** generates a executable script that changes directory into your attached project workspace (`cd "<attached_path>"`) and executes the interactive CLI resume command:
+   - **`opencode`**: `cd "<attached_path>" && opencode --session <sessionId> -m <model>`
+   - **`codex`**: `cd "<attached_path>" && codex resume <sessionId>`
+   - **`antigravity`**: `cd "<attached_path>" && agy --conversation=<sessionId> --model <model>`
+
+---
+
+## 🧠 Native Offline Local LLM Details
+
+Mac ASC embeds a complete, zero-dependency offline AI engine right inside the application bundle:
+
+* **Neural Model**: **Google Gemma 3 1B Instruct** (`gemma-3-1b-it-Q8_0.gguf`), bundled at `Resources/models/gemma-1b.gguf`.
+* **Hardware Engine**: C++/Metal GPU inference runtime (`llama-cli` & `libggml-metal.dylib`), accelerating matrix math directly on Apple Silicon M-series (M1/M2/M3/M4/M5) and Intel Metal GPUs.
+* **100% Plug-and-Play**: Requires zero downloads, zero setup, zero python/pip environments, zero Ollama services, and zero API keys.
+* **Air-Gapped Privacy**: Runs 100% offline with zero internet access. Prompts, code blocks, and responses never leave your Mac.
+* **Workspace Context Injection**: Attach files or folders to automatically pass workspace directory context (`Context Path: <path>`) into local prompts.
+
+---
+
 ## 🛠️ Technology Stack
 
 * **Platform**: macOS 13.0+
 * **Language**: Swift 5.9+ (Swift 6 async-concurrency compliant)
 * **Frameworks**: SwiftUI & AppKit (MVVM Architecture)
-* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing bundled local binaries (`llama-cli`) and system CLI agents (`opencode`, `codex`, `agy`).
+* **Subprocesses**: Native background process wrapper (`Process` & `Pipe`) executing bundled local binaries (`llama-cli`) and system CLI agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`).
 * **AI Engine**: Embedded Apple Metal GPU GGUF inference engine (`libggml-metal.dylib`) with Google Gemma 3 1B Instruct weights (`gemma-1b.gguf`), plus CLI agent integration.
 * **Packaging**: Built into a standalone `.app` bundle and distributed via a compressed `.dmg` installer.
 
@@ -74,7 +167,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 ### Installation
 
 #### Option 1: Direct Download (Recommended)
-1. Download the pre-compiled **[Mac_ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/APP/Mac_ASC.dmg)**.
+1. Download the pre-compiled **[Mac_ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg)**.
 2. Double-click the downloaded `.dmg` file to mount it.
 3. Drag **Mac ASC** into your **Applications** folder.
 
@@ -111,7 +204,7 @@ brew install --cask macasc
 
 * `Sources/`
   * `MacStorageUtilityApp.swift` — App entry point deploying the Status Bar Item and centered `NSPanel` controller.
-  * `StorageViewModel.swift` — Coordinates application state, custom commands, quick notes, AI chat threads, CLI discovery, and directory size indexing.
+  * `StorageViewModel.swift` — Coordinates application state, custom commands, quick notes, AI chat threads, `opencode`/`codex`/`antigravity` CLI discovery, and directory size indexing.
   * `StorageManager.swift` — Scans application sizes, traverses folder hierarchies asynchronously, and measures disk volumes.
   * `LocalAIEngine.swift` — Swift manager executing native offline GGUF inference via Apple Metal GPU acceleration.
   * `DropdownView.swift` — Core user interface, modular `@ViewBuilder` chat controls, sliding tab switcher, custom commands pane, quick notes, and local AI chat panel overlays.
