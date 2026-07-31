@@ -166,12 +166,7 @@ A shell script `build.sh` is included to compile the Swift source files, generat
 
 ### Installation
 
-#### Option 1: Direct Download (Recommended)
-1. Download the pre-compiled **[Mac_ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg)**.
-2. Double-click the downloaded `.dmg` file to mount it.
-3. Drag **Mac ASC** into your **Applications** folder.
-
-#### Option 2: Homebrew Cask (Tap)
+#### Option 1: Homebrew Cask (Recommended)
 You can tap this repository and install the application directly via Homebrew.
 
 ```bash
@@ -184,6 +179,11 @@ brew trust rian445/macasc
 # 3. Install the application
 brew install --cask macasc
 ```
+
+#### Option 2: Direct Download DMG
+1. Download the pre-compiled **[Mac_ASC.dmg](https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg)**.
+2. Double-click the downloaded `.dmg` file to mount it.
+3. Drag **Mac ASC** into your **Applications** folder.
 
 #### Option 3: Build from Source
 1. **Clone the Repository**:
