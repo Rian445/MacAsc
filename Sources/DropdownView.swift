@@ -2269,9 +2269,9 @@ extension DropdownView {
                 }
             }
             
-            // Full Window Text Content / Editor Area
+            // Full Window Text Content / Editor Area (High performance viewport rendering for huge notes)
             if isCreatingFullNote || isNoteEditingMode {
-                // EDITABLE MODE
+                // EDITABLE MODE: Full TextEditor
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $newNoteContent)
                         .font(.system(size: 12))
@@ -2295,21 +2295,25 @@ extension DropdownView {
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                // READ-ONLY VIEWING MODE: Typing is strictly disabled until user clicks Edit
-                ScrollView(.vertical, showsIndicators: true) {
-                    Text(newNoteContent.isEmpty ? "No content in this note." : newNoteContent)
-                        .font(.system(size: 12))
-                        .foregroundColor(newNoteContent.isEmpty ? .white.opacity(0.35) : .white)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
+                // READ-ONLY VIEWING MODE: Smooth native scrolling, selection & 0ms load time for huge files!
+                ZStack(alignment: .topLeading) {
+                    ReadOnlyNoteTextView(text: newNoteContent)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                    
+                    if newNoteContent.isEmpty {
+                        Text("No content in this note.")
+                            .foregroundColor(.white.opacity(0.35))
+                            .font(.system(size: 12))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
                 }
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
                 .frame(maxHeight: .infinity)
             }
         }
@@ -2508,14 +2512,12 @@ extension DropdownView {
     private func noteRow(for note: QuickNote) -> some View {
         HStack(spacing: 8) {
             Button(action: {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    editingNote = note
-                    newNoteTitle = note.title
-                    newNoteContent = note.content
-                    newNoteFolder = note.folder ?? ""
-                    isCreatingFullNote = false
-                    isNoteEditingMode = false
-                }
+                editingNote = note
+                newNoteTitle = note.title
+                newNoteContent = note.content
+                newNoteFolder = note.folder ?? ""
+                isCreatingFullNote = false
+                isNoteEditingMode = false
             }) {
                 HStack(spacing: 8) {
                     Image(systemName: "doc.text.fill")
@@ -3808,5 +3810,37 @@ class CommandTextView: NSTextView {
             return
         }
         super.doCommand(by: aSelector)
+    }
+}
+
+// Native Read-Only Text View for High Performance Viewing & Scrolling of Large Notes
+struct ReadOnlyNoteTextView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.font = NSFont.systemFont(ofSize: 12)
+        textView.textColor = NSColor.white
+        textView.string = text
+        textView.textContainerInset = NSSize(width: 4, height: 4)
+
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        if let textView = nsView.documentView as? NSTextView {
+            if textView.string != text {
+                textView.string = text
+            }
+        }
     }
 }
