@@ -30,6 +30,10 @@ Designed with a sleek, translucent glassmorphism interface, it blends seamlessly
   * **Zero Idle Memory Footprint**: Spawns processes strictly on-demand and terminates immediately upon response completion (`0 MB RAM` when idle).
   * **File & Folder Context Attachment**: Drag and drop any file or folder anywhere onto the chat window, or click the **Paperclip** icon to attach local path context for the AI.
   * **Markdown & Code Snippets**: Render multi-line markdown formatting, bullet points, headers, and syntax blocks.
+* **⚡ Custom Commands & Silent Background Mode**: Save shell script shortcuts categorized into nested subfolders with custom tags and custom titles:
+  * **Visual Terminal Mode**: Runs scripts inside a dedicated macOS Terminal window/tab (`Terminal.app`).
+  * **🔇 Silent Background Mode**: Toggle *"Run in Silent Mode (Background execution)"* to run scripts headlessly in the background via native Swift `Process()` with zero Terminal popups.
+  * **Live Process Monitoring & Cancellation**: Real-time running indicators (`stop.circle.fill`) and single-click Stop control for both foreground Terminal tabs and silent background tasks.
 * **📁 Nested Subfolders & Tree Hierarchy**: Supports unlimited nested folder trees using forward-slash path strings (e.g. `DevOps/Docker` or `Work/Projects/Scripts`) across Custom Commands and Quick Notes. Subfolders render with visual tree indentation, recursive collapse/expand, and item count badges.
 * **🔃 Interactive Sort Mode & Drag-and-Drop Nesting**: Click the **Sort** button at the top of Saved Commands or Saved Notes to activate manual sorting mode:
   * **Up / Down Arrow Controls**: Manually reorder folders, subfolders, and individual items up and down.

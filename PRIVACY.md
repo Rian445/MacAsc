@@ -14,7 +14,14 @@ The Mac ASC native application binary (`Mac ASC.app`) contains zero telemetry, z
 
 ---
 
-## 🤖 2. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
+## ⚡ 2. Custom Shell Commands & Background Process Isolation
+* **Local Execution Only**: Custom commands run strictly on your local Mac.
+* **Terminal Mode vs Silent Background Mode**: Commands configured for standard execution open in macOS Terminal (`Terminal.app`), while commands set to *Run in Silent Mode* execute headlessly via native Swift background process wrappers (`Process()`).
+* **Process Isolation & Safety**: Background commands run under your own local user permissions (`/bin/bash`). Mac ASC includes process boundary safety checks (`pid != myPid`) so process termination logic (`stopCustomCommand`) can only target processes explicitly spawned by your custom scripts.
+
+---
+
+## 🤖 3. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
 Mac ASC supports integration with command-line agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`) that you have installed on your Mac:
 * **User-Initiated Execution**: CLI agents are only executed when you explicitly select a CLI model from the chat dropdown and send a prompt.
 * **Local CLI Authentication**: Mac ASC executes your locally installed CLI binaries (`/opt/homebrew/bin/opencode`, `codex`, `agy`) using standard background subprocess wrappers (`Process()`). The CLI tools use your own local authentication tokens and API keys configured in your terminal environment.

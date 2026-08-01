@@ -878,20 +878,23 @@ class StorageViewModel: ObservableObject {
     
     // MARK: - Custom Terminal Commands
     
+    /// Active background processes for silent custom commands
+    private var silentProcessMap: [UUID: Process] = [:]
+    
     /// Adds a new terminal command and persists it
-    func addCustomCommand(name: String, command: String, folder: String?, tag: String?) {
+    func addCustomCommand(name: String, command: String, folder: String?, tag: String?, runSilent: Bool = false) {
         guard !name.isEmpty, !command.isEmpty else { return }
         let cleanFolder = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
         let folderValue = cleanFolder?.isEmpty == true ? nil : cleanFolder
         let cleanTag = tag?.trimmingCharacters(in: .whitespacesAndNewlines)
         let tagValue = cleanTag?.isEmpty == true ? nil : cleanTag
-        let newCmd = TerminalCommand(id: UUID(), name: name, command: command, folder: folderValue, tag: tagValue)
+        let newCmd = TerminalCommand(id: UUID(), name: name, command: command, folder: folderValue, tag: tagValue, runSilent: runSilent)
         self.customCommands.append(newCmd)
         saveCustomCommands()
     }
     
     /// Updates an existing terminal command details and persists it
-    func updateCustomCommand(id: UUID, name: String, command: String, folder: String?, tag: String?) {
+    func updateCustomCommand(id: UUID, name: String, command: String, folder: String?, tag: String?, runSilent: Bool = false) {
         guard !name.isEmpty, !command.isEmpty else { return }
         if let idx = customCommands.firstIndex(where: { $0.id == id }) {
             let cleanFolder = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -902,6 +905,7 @@ class StorageViewModel: ObservableObject {
             customCommands[idx].command = command
             customCommands[idx].folder = folderValue
             customCommands[idx].tag = tagValue
+            customCommands[idx].runSilent = runSilent
             saveCustomCommands()
         }
     }
@@ -912,8 +916,38 @@ class StorageViewModel: ObservableObject {
         saveCustomCommands()
     }
     
-    /// Executes a custom command inside a temporary shell script in Terminal
+    /// Executes a custom command inside a temporary shell script in Terminal or silently in background
     func runCustomCommand(_ cmd: TerminalCommand) {
+        // If configured to run in Silent Mode, execute in background via Process without opening Terminal
+        if cmd.runSilent == true {
+            if silentProcessMap[cmd.id] != nil { return } // Already running
+            
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = ["-c", cmd.command]
+            process.environment = makeCLIEnvironment()
+            process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            
+            process.terminationHandler = { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.runningCommandIds.remove(cmd.id)
+                    self?.silentProcessMap.removeValue(forKey: cmd.id)
+                }
+            }
+            
+            self.silentProcessMap[cmd.id] = process
+            self.runningCommandIds.insert(cmd.id)
+            
+            do {
+                try process.run()
+            } catch {
+                self.runningCommandIds.remove(cmd.id)
+                self.silentProcessMap.removeValue(forKey: cmd.id)
+                NSLog("Failed to run silent command \(cmd.name): \(error.localizedDescription)")
+            }
+            return
+        }
+        
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("custom_command_\(cmd.id.uuidString).command")
         
@@ -992,6 +1026,14 @@ class StorageViewModel: ObservableObject {
         // Remove from running IDs immediately
         self.runningCommandIds.remove(id)
         
+        // If running as a silent background process, terminate it directly
+        if let proc = silentProcessMap[id] {
+            if proc.isRunning {
+                proc.terminate()
+            }
+            silentProcessMap.removeValue(forKey: id)
+        }
+        
         let task = Process()
         task.launchPath = "/bin/bash"
         task.arguments = ["-c", "ps -eo pid,pgid,command | grep -F 'custom_command_\(id.uuidString).command' | grep -v grep"]
@@ -1051,6 +1093,13 @@ class StorageViewModel: ObservableObject {
     /// Scans for and terminates all terminal commands spawned by this app using SIGINT (Ctrl+C) 4 times
     func stopAllRunningCommands() {
         self.runningCommandIds.removeAll()
+        
+        for (_, proc) in silentProcessMap {
+            if proc.isRunning {
+                proc.terminate()
+            }
+        }
+        silentProcessMap.removeAll()
         
         let task = Process()
         task.launchPath = "/bin/bash"
@@ -1112,9 +1161,11 @@ class StorageViewModel: ObservableObject {
     
     /// Scans the system process list to check which custom commands are currently executing
     func checkRunningCommands() {
+        let activeSilentIds = Set(self.silentProcessMap.filter { $0.value.isRunning }.keys)
+        
         Task {
             // Run the blocking process execution on a global background queue
-            let activeIds = await withCheckedContinuation { continuation in
+            let activeTerminalIds = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .background).async {
                     let task = Process()
                     task.launchPath = "/bin/bash"
@@ -1153,7 +1204,9 @@ class StorageViewModel: ObservableObject {
             }
             
             // Update our published state on the main actor
-            self.runningCommandIds = activeIds
+            await MainActor.run {
+                self.runningCommandIds = activeTerminalIds.union(activeSilentIds)
+            }
         }
     }
     
@@ -2368,6 +2421,7 @@ struct TerminalCommand: Identifiable, Codable, Equatable {
     var command: String
     var folder: String?
     var tag: String?
+    var runSilent: Bool? = false
 }
 
 struct QuickNote: Identifiable, Codable, Equatable {

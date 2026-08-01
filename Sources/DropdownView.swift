@@ -18,6 +18,7 @@ struct DropdownView: View {
     @State private var showAboutPopover = false
     
     @State private var editingCommand: TerminalCommand? = nil
+    @State private var newCommandRunSilent: Bool = false
     @State private var collapsedFolders: Set<String> = []
     
     // Quick Notes State
@@ -1695,6 +1696,20 @@ extension DropdownView {
                             .cornerRadius(6)
                             .foregroundColor(.white)
                             .font(.system(size: 12))
+                        
+                        Toggle(isOn: $newCommandRunSilent) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "speaker.slash.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.purple)
+                                Text("Run in Silent Mode (Background execution)")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .padding(.top, 2)
+                        .help("Executes script silently in the background without opening Terminal.app")
                     }
                     .padding(.top, 4)
                     
@@ -1706,6 +1721,7 @@ extension DropdownView {
                                     newCommandString = ""
                                     newCommandFolder = ""
                                     newCommandTag = ""
+                                    newCommandRunSilent = false
                                     editingCommand = nil
                                     isAddFormExpanded = false
                                 }
@@ -1724,14 +1740,15 @@ extension DropdownView {
                         
                         Button(action: {
                             if let cmd = editingCommand {
-                                viewModel.updateCustomCommand(id: cmd.id, name: newCommandName, command: newCommandString, folder: newCommandFolder, tag: newCommandTag)
+                                viewModel.updateCustomCommand(id: cmd.id, name: newCommandName, command: newCommandString, folder: newCommandFolder, tag: newCommandTag, runSilent: newCommandRunSilent)
                             } else {
-                                viewModel.addCustomCommand(name: newCommandName, command: newCommandString, folder: newCommandFolder, tag: newCommandTag)
+                                viewModel.addCustomCommand(name: newCommandName, command: newCommandString, folder: newCommandFolder, tag: newCommandTag, runSilent: newCommandRunSilent)
                             }
                             newCommandName = ""
                             newCommandString = ""
                             newCommandFolder = ""
                             newCommandTag = ""
+                            newCommandRunSilent = false
                             editingCommand = nil
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isAddFormExpanded = false
@@ -1924,6 +1941,21 @@ extension DropdownView {
                             .foregroundColor(.blue)
                             .cornerRadius(4)
                         }
+                        
+                        if cmd.runSilent == true {
+                            HStack(spacing: 2) {
+                                Image(systemName: "speaker.slash.fill")
+                                    .font(.system(size: 7))
+                                Text("Silent")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.purple.opacity(0.18))
+                            .foregroundColor(.purple)
+                            .cornerRadius(4)
+                            .help("Executes silently in the background without launching Terminal")
+                        }
                     }
                     Text(cmd.command)
                         .font(.system(size: 9, design: .monospaced))
@@ -1994,6 +2026,7 @@ extension DropdownView {
                 newCommandString = cmd.command
                 newCommandFolder = cmd.folder ?? ""
                 newCommandTag = cmd.tag ?? ""
+                newCommandRunSilent = cmd.runSilent ?? false
                 withAnimation(.easeInOut(duration: 0.25)) {
                     isAddFormExpanded = true
                 }
