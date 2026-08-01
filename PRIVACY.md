@@ -21,7 +21,14 @@ The Mac ASC native application binary (`Mac ASC.app`) contains zero telemetry, z
 
 ---
 
-## 🤖 3. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
+## ⌨️ 3. Window-Scoped Keyboard Shortcuts & Privacy
+* **Local Window Scope Only**: Tab keyboard shortcuts (`⌘1..4` or custom reassignments) use native AppKit local monitors (`NSEvent.addLocalMonitorForEvents`). Key presses are intercepted **strictly when the Mac ASC window is active and open**.
+* **Zero Global Keylogging**: The application cannot observe, capture, or log keystrokes typed in other applications, browsers, or password fields when Mac ASC is closed or unfocused.
+* **No Accessibility Permissions Needed**: Because event monitoring is strictly scoped to Mac ASC's own window, no system-level macOS Accessibility or Keylogger permissions are requested or required.
+
+---
+
+## 🤖 4. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
 Mac ASC supports integration with command-line agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`) that you have installed on your Mac:
 * **User-Initiated Execution**: CLI agents are only executed when you explicitly select a CLI model from the chat dropdown and send a prompt.
 * **Local CLI Authentication**: Mac ASC executes your locally installed CLI binaries (`/opt/homebrew/bin/opencode`, `codex`, `agy`) using standard background subprocess wrappers (`Process()`). The CLI tools use your own local authentication tokens and API keys configured in your terminal environment.
