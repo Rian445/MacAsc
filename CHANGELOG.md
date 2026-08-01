@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Dynamic Model Discovery**: Automatically parses available models directly from installed CLI agents (`opencode models`, `codex`, `antigravity`).
 - **Provider Model Preservation**: Preserves full model identifiers (e.g. `opencode/deepseek-v4-flash-free`) to prevent provider API endpoint resolution errors.
 - **Smart Terminal Session Launcher**: Resumes active chat threads in macOS Terminal with proper `cd` working directory navigation, session binding, and CLI-specific permission flags (`--auto`, `--dangerously-skip-permissions`).
+- **Silent Background Execution Mode for Custom Commands**: Added *"Run in Silent Mode (Background execution)"* toggle option to custom commands, executing shell scripts headlessly in the background via native Swift `Process()` wrappers without opening Terminal.app, complete with purple `[🔇 Silent]` badges and real-time process cancellation control.
 - **Read-Only Viewing Mode & Note Virtualization**: Added read-only mode for Quick Notes utilizing native `NSTextView` viewport virtualization (`ReadOnlyNoteTextView`), achieving instant 0ms load times and smooth trackpad scrolling for multi-megabyte note files without main-thread UI beachballs.
 - **Icon-Only Single-Row Top Toolbar**: Streamlined Note View top bar into a single compact row featuring icon-only Back (`chevron.left`), Edit (`pencil`), Copy, and Delete buttons alongside a horizontally scrollable note title and fixed folder badge.
 
