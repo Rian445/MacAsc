@@ -1,0 +1,62 @@
+# 🤖 Multi-Model CLI AI Assistant User Manual
+
+Welcome to the **Multi-Model CLI AI Assistant** user guide for Mac ASC. This module provides a zero-idle-memory AI panel that interfaces directly with your system-installed CLI agents (`opencode`, OpenAI `codex`, and Google `antigravity` / `agy`).
+
+---
+
+## 📸 Visual Overview
+
+<p align="center">
+  <img src="../Screenshots/ai_chat_overview.png" width="480" alt="AI Chat Overview & Model Picker"/>
+</p>
+
+---
+
+## 🔍 Key Capabilities
+
+1. **System CLI Compatibility**:
+   - ⚡ **`opencode`**: Supports open models (e.g. `opencode/deepseek-v4-flash-free`).
+   - 🤖 **OpenAI `codex`**: Execute OpenAI models (`gpt-5.5`, `gpt-4o`) via `stdin` prompt piping.
+   - 🌌 **Google `antigravity` (`agy`)**: Execute Google models (`gemini-3.6-flash-medium`) with multi-directory context mapping.
+
+2. **0 MB Idle RAM Architecture**:
+   - Subprocesses are spawned on-demand when you send a prompt and terminate immediately when output finishes.
+   - Between queries, **0 MB of background RAM** is used.
+
+3. **Workspace File & Folder Attachments**:
+   - Drag and drop any file or directory onto the chat window, or click the **Paperclip Icon** to attach local path context for the AI.
+
+4. **Interactive Terminal Handoff**:
+   - Click the **Terminal Icon** on any chat thread to open an interactive session directly inside macOS Terminal (`Terminal.app`) with automatically bound session hashes (`--session` / `--conversation`).
+
+<p align="center">
+  <img src="../Screenshots/ai_chat_attachment_terminal.png" width="480" alt="Workspace Attachments and Terminal Launcher"/>
+</p>
+
+---
+
+## 🛠️ Step-by-Step Usage & Examples
+
+### Example 1: Chatting with an AI CLI Model
+1. Switch to the **Chat with AI** tab (`⌘4`).
+2. Select your desired CLI agent & model from the model dropdown menu (e.g. `opencode/deepseek-v4-flash-free`).
+3. Type your prompt (e.g. *"Explain how Swift async/await continuation works with code examples"*).
+4. Press **Enter** or click **Send**. The response streams live into the panel!
+
+### Example 2: Attaching Workspace Folder Context
+1. Click the **Paperclip Icon** at the bottom of the chat view.
+2. Select your project directory (e.g. `~/Projects/MyApp`).
+3. Type a request: *"Review the architecture of this codebase and suggest refactoring steps."*
+4. Mac ASC automatically passes `--add-dir` or path flags to your CLI agent, providing full project context!
+
+### Example 3: Resuming a Session in macOS Terminal
+1. Once an AI CLI session has generated code in Mac ASC, click the **Terminal Icon** in the chat header.
+2. Mac ASC launches macOS Terminal, navigates (`cd`) to your project directory, and resumes the active session hash (`opencode --session ses_...`).
+3. You can now continue the interactive conversation directly inside your command line!
+
+---
+
+## 💡 System Permissions & Privacy
+- System action flags (`--dangerously-skip-permissions` / `--auto`) require explicit opt-in in Settings (*"Allow AI System Actions"*).
+- All AI queries execute locally using your existing CLI tokens and API credentials.
+- Deleting or clearing a thread automatically deletes remote server-side session references (`opencode session delete`).
