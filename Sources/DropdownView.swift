@@ -19,6 +19,8 @@ struct DropdownView: View {
     
     @State private var editingCommand: TerminalCommand? = nil
     @State private var newCommandRunSilent: Bool = false
+    @State private var keyMonitor: Any? = nil
+    @State private var recordingShortcutTabId: Int? = nil
     @State private var collapsedFolders: Set<String> = []
     
     // Quick Notes State
@@ -335,10 +337,73 @@ struct DropdownView: View {
         .onAppear {
             viewModel.startMonitoringRunningCommands()
             viewModel.scanAppSelfSizes()
+            setupKeyboardShortcutMonitor()
         }
         .onDisappear {
             viewModel.stopMonitoringRunningCommands()
+            removeKeyboardShortcutMonitor()
         }
+    }
+    
+    // MARK: - Local Keyboard Shortcut Monitor
+    
+    private func setupKeyboardShortcutMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // If actively recording a shortcut in Settings, capture key press!
+            if let recordingTabId = self.recordingShortcutTabId {
+                let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                if !pressedKey.isEmpty {
+                    viewModel.setTabShortcut(tabId: recordingTabId, key: pressedKey, modifiers: flags.rawValue)
+                    DispatchQueue.main.async {
+                        self.recordingShortcutTabId = nil
+                    }
+                    return nil // Consume event
+                }
+            }
+            
+            // If user is actively typing text inside a TextField or TextEditor / NSTextView, ignore single key press without Command/Option/Control modifiers
+            if let responder = NSApp.keyWindow?.firstResponder {
+                let responderType = String(describing: type(of: responder))
+                if responderType.contains("TextView") || responderType.contains("TextField") {
+                    let hasModifier = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.option) || event.modifierFlags.contains(.control)
+                    if !hasModifier {
+                        return event
+                    }
+                }
+            }
+            
+            let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            
+            for (tabId, shortcut) in viewModel.tabShortcuts {
+                let targetFlags = NSEvent.ModifierFlags(rawValue: shortcut.modifiers).intersection(.deviceIndependentFlagsMask)
+                if pressedKey == shortcut.key.lowercased() && currentFlags == targetFlags {
+                    if isTabEnabled(tabId) {
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                currentTopTab = tabId
+                                let enabledTabs = self.activeTabs
+                                if let tabIdx = enabledTabs.firstIndex(where: { $0.id == tabId }) {
+                                    tabPageIndex = tabIdx / 2
+                                }
+                            }
+                        }
+                        return nil // Consume event
+                    }
+                }
+            }
+            return event
+        }
+    }
+    
+    private func removeKeyboardShortcutMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+        recordingShortcutTabId = nil
     }
     
     // MARK: - Dynamic Navigation & Tweak Settings Helpers
@@ -405,6 +470,16 @@ struct DropdownView: View {
         case 2: return ("Quick Note", "note.text", .yellow)
         case 3: return ("Chat with AI", "cpu.fill", .purple)
         default: return ("Tab", "square.fill", .white)
+        }
+    }
+    
+    private func isTabEnabled(_ id: Int) -> Bool {
+        switch id {
+        case 0: return viewModel.enableDiskInsight
+        case 1: return viewModel.enableCustomCommands
+        case 2: return viewModel.enableQuickNotes
+        case 3: return viewModel.enableAiChat
+        default: return false
         }
     }
     
@@ -542,6 +617,97 @@ struct DropdownView: View {
                             .font(.system(size: 9))
                             .foregroundColor(.white.opacity(0.35))
                             .padding(.top, 6)
+                        
+                        Divider()
+                            .opacity(0.12)
+                            .padding(.vertical, 4)
+                        
+                        // Tab Keyboard Shortcuts Section
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("TAB KEYBOARD SHORTCUTS")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Button(action: {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        viewModel.resetTabShortcutsToDefault()
+                                    }
+                                }) {
+                                    Label("Reset Shortcuts", systemImage: "arrow.counterclockwise")
+                                        .font(.system(size: 9.5, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            
+                            Text("Shortcuts active when Mac ASC is open. Click any shortcut badge to record a new key combination:")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .padding(.bottom, 2)
+                            
+                            VStack(spacing: 6) {
+                                ForEach([0, 1, 2, 3], id: \.self) { tabId in
+                                    let tabInfo = tabInfoForId(tabId)
+                                    let isEnabled = isTabEnabled(tabId)
+                                    let shortcut = viewModel.tabShortcuts[tabId]
+                                    let isRecording = recordingShortcutTabId == tabId
+                                    
+                                    HStack(spacing: 8) {
+                                        Image(systemName: tabInfo.icon)
+                                            .foregroundColor(isEnabled ? tabInfo.color : .secondary)
+                                            .font(.system(size: 11))
+                                            .frame(width: 18)
+                                        
+                                        Text(tabInfo.title)
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(isEnabled ? .white : .secondary)
+                                        
+                                        Spacer()
+                                        
+                                        Button(action: {
+                                            if recordingShortcutTabId == tabId {
+                                                recordingShortcutTabId = nil
+                                            } else {
+                                                recordingShortcutTabId = tabId
+                                            }
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                if isRecording {
+                                                    Image(systemName: "keyboard.fill")
+                                                        .font(.system(size: 9))
+                                                        .foregroundColor(.yellow)
+                                                    Text("Press Key...")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(.yellow)
+                                                } else {
+                                                    Text(shortcut?.displayString ?? "None")
+                                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                        .foregroundColor(.white)
+                                                }
+                                            }
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(isRecording ? Color.yellow.opacity(0.2) : Color.white.opacity(0.1))
+                                            .cornerRadius(5)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 5)
+                                                    .strokeBorder(isRecording ? Color.yellow.opacity(0.6) : Color.white.opacity(0.2), lineWidth: 1)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!isEnabled)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(Color.white.opacity(0.03))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .background(Color.white.opacity(0.03))
+                        .cornerRadius(8)
                         
                         Divider()
                             .opacity(0.12)

@@ -36,6 +36,7 @@ class StorageViewModel: ObservableObject {
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
     @Published var tabOrder: [Int] = [0, 1, 2, 3]
+    @Published var tabShortcuts: [Int: TabShortcut] = [:]
     @Published var customCommandFolderOrder: [String] = []
     @Published var quickNoteFolderOrder: [String] = []
     @Published var availableModels: [String] = []
@@ -100,6 +101,8 @@ class StorageViewModel: ObservableObject {
         } else {
             self.tabOrder = [0, 1, 2, 3]
         }
+        
+        loadTabShortcuts()
     }
     
     // MARK: - Folder Tree & Reordering Helpers
@@ -453,6 +456,53 @@ class StorageViewModel: ObservableObject {
     func saveTabOrder() {
         UserDefaults.standard.set(tabOrder, forKey: "DashboardTabOrder")
         self.objectWillChange.send()
+    }
+
+    // MARK: - Tab Keyboard Shortcuts
+    
+    /// Loads saved tab keyboard shortcuts or initializes defaults (Cmd+1..4)
+    func loadTabShortcuts() {
+        if let data = UserDefaults.standard.data(forKey: "TabKeyboardShortcuts"),
+           let saved = try? JSONDecoder().decode([String: TabShortcut].self, from: data) {
+            var map: [Int: TabShortcut] = [:]
+            for (k, v) in saved {
+                if let id = Int(k) { map[id] = v }
+            }
+            self.tabShortcuts = map
+        } else {
+            resetTabShortcutsToDefault()
+        }
+    }
+    
+    /// Resets tab shortcuts to default (Cmd+1 for Disk, Cmd+2 for Commands, Cmd+3 for Notes, Cmd+4 for AI)
+    func resetTabShortcutsToDefault() {
+        let cmdModifier = NSEvent.ModifierFlags.command.rawValue
+        self.tabShortcuts = [
+            0: TabShortcut(key: "1", modifiers: cmdModifier),
+            1: TabShortcut(key: "2", modifiers: cmdModifier),
+            2: TabShortcut(key: "3", modifiers: cmdModifier),
+            3: TabShortcut(key: "4", modifiers: cmdModifier)
+        ]
+        saveTabShortcuts()
+    }
+    
+    /// Saves tab keyboard shortcuts to UserDefaults
+    func saveTabShortcuts() {
+        var strMap: [String: TabShortcut] = [:]
+        for (k, v) in tabShortcuts {
+            strMap[String(k)] = v
+        }
+        if let encoded = try? JSONEncoder().encode(strMap) {
+            UserDefaults.standard.set(encoded, forKey: "TabKeyboardShortcuts")
+        }
+        self.objectWillChange.send()
+    }
+    
+    /// Sets or updates the shortcut for a tab
+    func setTabShortcut(tabId: Int, key: String, modifiers: UInt) {
+        let cleanKey = key.lowercased()
+        self.tabShortcuts[tabId] = TabShortcut(key: cleanKey, modifiers: modifiers)
+        saveTabShortcuts()
     }
 
     /// Loads the selected AI model and starts loading all available models
@@ -2275,6 +2325,7 @@ class StorageViewModel: ObservableObject {
         "TweakQuickNote",
         "TweakChatWithAi",
         "DashboardTabOrder",
+        "TabKeyboardShortcuts",
         "CustomCommandFolderOrder",
         "QuickNoteFolderOrder",
         "PinnedFolders",
@@ -2407,6 +2458,22 @@ class StorageViewModel: ObservableObject {
 }
 
 // MARK: - Models
+
+struct TabShortcut: Codable, Equatable {
+    var key: String
+    var modifiers: UInt
+    
+    var displayString: String {
+        var str = ""
+        let flags = NSEvent.ModifierFlags(rawValue: modifiers)
+        if flags.contains(.control) { str += "⌃" }
+        if flags.contains(.option) { str += "⌥" }
+        if flags.contains(.shift) { str += "⇧" }
+        if flags.contains(.command) { str += "⌘" }
+        str += key.uppercased()
+        return str
+    }
+}
 
 struct FolderNode: Identifiable, Equatable {
     var id: String { fullPath }
