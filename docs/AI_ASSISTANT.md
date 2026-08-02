@@ -120,6 +120,8 @@ curl -fsSL https://antigravity.google.com/install.sh | bash
 ---
 
 ## 💡 System Permissions & Privacy
-- System action flags (`--dangerously-skip-permissions` / `--auto`) require explicit opt-in in Settings (*"Allow AI System Actions"*).
-- All AI queries execute locally using your existing CLI tokens and API credentials.
-- Deleting or clearing a thread automatically deletes remote server-side session references (`opencode session delete`).
+
+- **🔒 Zero Credential & Zero API Key Input Requirement**: Mac ASC **never** asks you to enter API keys, passwords, tokens, or account credentials inside the app.
+- **Delegated CLI Authentication**: Authentication is handled 100% directly inside your macOS Terminal via the respective CLI tool (`opencode auth login`, `codex auth login`, `agy auth login`). Once authenticated in Terminal, Mac ASC leverages your existing CLI environment securely.
+- **System Action Safety**: System action flags (`--dangerously-skip-permissions` / `--auto`) require explicit opt-in in Settings (*"Allow AI System Actions"*).
+- **Session Cleanup**: Deleting or clearing a thread automatically deletes remote server-side session references (`opencode session delete`).

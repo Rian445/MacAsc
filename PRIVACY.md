@@ -30,8 +30,9 @@ The Mac ASC native application binary (`Mac ASC.app`) contains zero telemetry, z
 
 ## 🤖 4. External CLI AI Agents (`opencode`, `codex`, `antigravity`)
 Mac ASC supports integration with command-line agents (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`) that you have installed on your Mac:
+* **Zero Credential / API Key Input Requirement**: Mac ASC **never** prompts for or collects API keys, passwords, or login credentials inside the application. Authentication is handled 100% directly inside your terminal environment by logging into the respective CLI tool (`opencode auth login`, `codex auth login`, `agy auth login`).
 * **User-Initiated Execution**: CLI agents are only executed when you explicitly select a CLI model from the chat dropdown and send a prompt.
-* **Local CLI Authentication**: Mac ASC executes your locally installed CLI binaries (`/opt/homebrew/bin/opencode`, `codex`, `agy`) using standard background subprocess wrappers (`Process()`). The CLI tools use your own local authentication tokens and API keys configured in your terminal environment.
+* **Local CLI Execution**: Mac ASC executes your locally installed CLI binaries (`/opt/homebrew/bin/opencode`, `codex`, `agy`) using standard background subprocess wrappers (`Process()`). The CLI tools use your existing local authentication tokens configured in your terminal environment.
 * **Server-Side Sessions**: Chat session IDs (`ses_...` or `--conversation`) are maintained by the respective CLI provider to preserve conversation context.
 * **Automatic Session Cleanup**: When you delete or clear a chat thread in Mac ASC, the application automatically issues a session removal request (`opencode session delete <sessionID>`) to clean up local and remote session references.
 
