@@ -44,9 +44,49 @@ graph TD
 
 ---
 
-## 🚀 Terminal Handoff & Session Persistence
+## 🚀 Terminal Handoff & Session Persistence Sequence Diagram
 
-When you click **"Resume Session in Terminal"**, Mac ASC generates a executable script (`.command`) that:
-1. Navigates to your workspace or home directory (`~`).
-2. Invokes the native CLI binary (`opencode`, `codex`, `antigravity`) with `--session <sessionId>` or `--conversation=<id>`.
-3. Opens a native interactive terminal window where you can continue full multi-file coding workflows seamlessly.
+When you click **"Resume Session in Terminal"**, Mac ASC generates an executable script (`.command`) that navigates to your workspace and resumes the active session hash:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant MacASC as Mac ASC (SwiftUI)
+    participant VM as StorageViewModel
+    participant Subprocess as Background Process
+    participant Term as macOS Terminal (Terminal.app)
+
+    User->>MacASC: Send Prompt ("Build feature in ~/Projects/MyApp")
+    MacASC->>VM: sendChatMessage(prompt, attachments)
+    VM->>Subprocess: Process.run("/bin/bash -c opencode run ...")
+    Subprocess-->>VM: Stream Response & Output Session Hash (e.g., ses_04a9...)
+    VM->>VM: Extract & Save activeSessionId in ChatThread (UserDefaults)
+    VM-->>MacASC: Update UI with AI Response & Terminal Icon
+    
+    User->>MacASC: Click "Open in Terminal" Button
+    MacASC->>VM: launchTerminalSession(for: activeThread)
+    VM->>VM: Write script: cd "~/Projects/MyApp" && opencode --session ses_04a9...
+    VM->>Term: NSWorkspace.open(scriptURL)
+    Term-->>User: Interactive Terminal Session Resumed with Full History!
+```
+
+---
+
+## 🔑 Session Hash Extraction & CLI Command Mapping
+
+1. **`opencode`**:
+   - **Session Hash**: `ses_[a-zA-Z0-9]+`
+   - **In-App Runner**: `opencode run "<prompt>" -m <model> --auto`
+   - **Terminal Resume**: `cd "<attached_path>" && opencode --session <sessionId> -m <model> --auto`
+   - **Session Cleanup**: `opencode session delete <sessionId>`
+
+2. **OpenAI `codex`**:
+   - **Session Hash**: `--conversation=<uuid>`
+   - **In-App Runner**: `echo "<prompt>" | codex exec -m <model> --skip-git-repo-check`
+   - **Terminal Resume**: `cd "<attached_path>" && codex resume <sessionId>`
+
+3. **Google `antigravity` (`agy`)**:
+   - **Session Hash**: `--conversation=<uuid>`
+   - **In-App Runner**: `agy -p "<prompt>" --model <model> --add-dir "<path>"`
+   - **Terminal Resume**: `cd "<attached_path>" && agy --conversation=<sessionId> --model <model>`

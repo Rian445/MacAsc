@@ -35,6 +35,65 @@ Welcome to the **Multi-Model CLI AI Assistant** user guide for Mac ASC. This mod
 
 ---
 
+## ⚡ CLI Agent Installation Guide
+
+Mac ASC interfaces with CLI agents installed on your Mac. Follow the instructions below to install and configure your preferred AI CLI tools:
+
+### 1. ⚡ `opencode` CLI
+Execute open-source and frontier models (DeepSeek, Claude, Llama, etc.).
+
+```bash
+# Option A: Install via Homebrew
+brew install opencode
+
+# Option B: Install via NPM / Bun
+npm install -g opencode
+# or: bun add -g opencode
+```
+
+- **Verify Installation**: Run `opencode --version` in Terminal.
+- **Model Discovery**: Mac ASC automatically parses models from `opencode models`.
+
+---
+
+### 2. 🤖 OpenAI `codex` CLI
+Execute OpenAI models (`gpt-5.5`, `gpt-4o`) with automatic workspace context.
+
+```bash
+# Option A: Install via NPM
+npm install -g @openai/codex
+
+# Option B: Install via Homebrew
+brew install codex
+```
+
+- **Authentication**: Set your API key in `~/.codex/config.toml` or export it in your shell environment:
+  ```bash
+  export OPENAI_API_KEY="your-api-key-here"
+  ```
+- **Verify Installation**: Run `codex --version` in Terminal.
+
+---
+
+### 3. 🌌 Google `antigravity` (`agy`) CLI
+Execute Google Antigravity models (`gemini-3.6-flash-medium`) with multi-path context mapping.
+
+```bash
+# Option A: Install via Homebrew
+brew install antigravity
+
+# Option B: Install via cURL Installer
+curl -fsSL https://antigravity.google.com/install.sh | bash
+```
+
+- **Authentication**: Log in to your Google developer account:
+  ```bash
+  agy auth login
+  ```
+- **Verify Installation**: Run `agy --version` in Terminal.
+
+---
+
 ## 🛠️ Step-by-Step Usage & Examples
 
 ### Example 1: Chatting with an AI CLI Model
