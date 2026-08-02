@@ -51,6 +51,10 @@ npm install -g opencode
 # or: bun add -g opencode
 ```
 
+- **Authentication**: Open Terminal and log in directly inside the CLI:
+  ```bash
+  opencode auth login
+  ```
 - **Verify Installation**: Run `opencode --version` in Terminal.
 - **Model Discovery**: Mac ASC automatically parses models from `opencode models`.
 
@@ -67,9 +71,9 @@ npm install -g @openai/codex
 brew install codex
 ```
 
-- **Authentication**: Set your API key in `~/.codex/config.toml` or export it in your shell environment:
+- **Authentication**: Open Terminal and log in directly inside the CLI:
   ```bash
-  export OPENAI_API_KEY="your-api-key-here"
+  codex auth login
   ```
 - **Verify Installation**: Run `codex --version` in Terminal.
 
@@ -86,7 +90,7 @@ brew install antigravity
 curl -fsSL https://antigravity.google.com/install.sh | bash
 ```
 
-- **Authentication**: Log in to your Google developer account:
+- **Authentication**: Open Terminal and log in directly inside the CLI:
   ```bash
   agy auth login
   ```
