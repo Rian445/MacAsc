@@ -57,10 +57,12 @@ Mac ASC combines system storage management, custom shell automation, instant not
 - **Interactive Terminal Handoff**: Resume active chat threads directly in Terminal with `cd` workspace navigation.
 - 📖 *Want to learn more? Read the complete [AI Assistant User Manual](docs/AI_ASSISTANT.md) and technical [AI Architecture Guide](AI_ARCHITECTURE.md).*
 
-### 🎥 5. Native Screen Recorder (MP4 Output)
-- **Native Capture Engine**: High-performance screen capture powered by AVFoundation with standard H.264 `.mp4` video compression.
-- **Configurable Settings**: Choose resolution (Native, 1080p, 720p), capture mode (Full Screen, Window), save path custom folder, and microphone input.
-- **Recent Recordings & Quick Actions**: View last 5 recordings to instantly play in QuickTime or reveal in Finder.
+### 🎥 5. Native Screen Recorder & H.265 Compression Engine
+- **Hardware-Accelerated HEVC (H.265) Capture**: Native screen capture powered by AVFoundation utilizing macOS dedicated hardware encoders for up to 50% smaller sizes at pristine visual quality.
+- **Interactive Crop Area Selector**: Choose capture mode (*Window* or *Full Screen*) to bring up an interactive, resizable neon-bordered crop selection overlay. Drag and resize to capture exactly what you need.
+- **Fine-Tuned Configuration**: Select resolution (Native, 1080p, 720p), frame rates (30 FPS or 60 FPS), microphone toggle, and video quality bitrates (Low, Medium, High, Ultra up to 12 Mbps).
+- **Pause/Resume & Auto-Hide Control**: Pause and resume recordings on-the-fly. The dropdown window auto-collapses during capture to stay out of your video frame and restores when paused or stopped.
+- **Recent Recordings & Quick Actions**: Lists recent clips inside the scrollable section, allowing you to play instantly in QuickTime or reveal in Finder.
 - 📖 *Want to learn more? Read the complete [Screen Recorder User Manual](docs/SCREEN_RECORDER.md).*
 
 ### ⌨️ 6. Customizable Tab Keyboard Shortcuts
