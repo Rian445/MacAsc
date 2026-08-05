@@ -1112,7 +1112,7 @@ struct DropdownView: View {
                                 .padding(.bottom, 2)
                             
                             VStack(spacing: 6) {
-                                ForEach([0, 1, 2, 3], id: \.self) { tabId in
+                                ForEach([0, 1, 2, 3, 4], id: \.self) { tabId in
                                     let tabInfo = tabInfoForId(tabId)
                                     let isEnabled = isTabEnabled(tabId)
                                     let shortcut = viewModel.tabShortcuts[tabId]

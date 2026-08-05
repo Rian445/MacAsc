@@ -488,6 +488,11 @@ class StorageViewModel: ObservableObject {
             for (k, v) in saved {
                 if let id = Int(k) { map[id] = v }
             }
+            // Self-healing default shortcut injection for Screen Recorder tab
+            if map[4] == nil {
+                let cmdModifier = NSEvent.ModifierFlags.command.rawValue
+                map[4] = TabShortcut(key: "5", modifiers: cmdModifier)
+            }
             self.tabShortcuts = map
         } else {
             resetTabShortcutsToDefault()
