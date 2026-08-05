@@ -33,6 +33,28 @@ Welcome to the **Screen Recorder** user guide for Mac ASC. This module allows yo
 
 ---
 
+## ⚙️ Under-the-Hood Mechanics
+
+1. **Capture Infrastructure**:
+   - Uses Apple's **AVFoundation** framework to configure an `AVCaptureSession`.
+   - Captures screen frames using `AVCaptureScreenInput` and microphone audio via `AVCaptureDeviceInput` dynamically.
+   - Combines both feeds into an `AVCaptureMovieFileOutput` object, which compiles them into a single, synchronized `.mp4` container.
+
+2. **HEVC H.265 Compression & Hardware Acceleration**:
+   - Uses the **HEVC (H.265)** video compression standard (`AVVideoCodecType.hevc`).
+   - Runs directly on the dedicated Apple Video Encoder (AVE) hardware chip built into Apple Silicon (M1/M2/M3/M4) or Intel Quick Sync chips.
+   - This bypasses normal CPU/GPU cores, achieving massive compression while keeping system load and battery usage near 0%.
+
+3. **Keyframe Interval & Bitrate Optimization**:
+   - Restricts keyframe generation with `AVVideoMaxKeyFrameIntervalKey = 120`. Since screen recordings are mostly static (like code editor text), the compressor only saves pixel changes (delta frames) for up to 120 frames at a time, keeping output files exceptionally small.
+   - Enforces specific target bitrates: `600 Kbps` (Low), `1.4 Mbps` (Medium), `3.0 Mbps` (High), and `12.0 Mbps` (Ultra).
+
+4. **Retina Display back-scaling**:
+   - Accounts for the physical display's backing scale factor (`NSScreen.main?.backingScaleFactor`, e.g. `2.0` on Retina screens).
+   - Multiplies the selection coordinate points by this factor to compute scale factors, ensuring target resolutions like `720p` map to exactly 720 physical pixels in video height.
+
+---
+
 ## 🛠️ Step-by-Step Usage & Examples
 
 ### Example 1: Recording Full Screen with Microphone Audio
