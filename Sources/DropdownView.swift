@@ -21,6 +21,9 @@ struct DropdownView: View {
     @State private var newCommandRunSilent: Bool = false
     @State private var keyMonitor: Any? = nil
     @State private var recordingShortcutTabId: Int? = nil
+    @State private var accumulatedScrollX: CGFloat = 0
+    @State private var swipeCooldownActive: Bool = false
+    @State private var lastSwipeTime: Date = Date.distantPast
     @State private var collapsedFolders: Set<String> = []
     
     // Quick Notes State
@@ -345,53 +348,131 @@ struct DropdownView: View {
         }
     }
     
-    // MARK: - Local Keyboard Shortcut Monitor
+    // MARK: - Local Keyboard Shortcut & Scroll Swipe Monitor
+    
+    private func cycleTab(direction: Int) {
+        let enabled = self.activeTabs
+        guard !enabled.isEmpty else { return }
+        
+        let currentIndex = enabled.firstIndex(where: { $0.id == currentTopTab }) ?? 0
+        let nextIndex = (currentIndex + direction + enabled.count) % enabled.count
+        let nextTabId = enabled[nextIndex].id
+        
+        withAnimation(.easeInOut(duration: 0.22)) {
+            currentTopTab = nextTabId
+            tabPageIndex = nextIndex / 2
+        }
+    }
     
     private func setupKeyboardShortcutMonitor() {
         guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // If actively recording a shortcut in Settings, capture key press!
-            if let recordingTabId = self.recordingShortcutTabId {
-                let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
-                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                if !pressedKey.isEmpty {
-                    viewModel.setTabShortcut(tabId: recordingTabId, key: pressedKey, modifiers: flags.rawValue)
-                    DispatchQueue.main.async {
-                        self.recordingShortcutTabId = nil
-                    }
-                    return nil // Consume event
-                }
-            }
-            
-            // If user is actively typing text inside a TextField or TextEditor / NSTextView, ignore single key press without Command/Option/Control modifiers
-            if let responder = NSApp.keyWindow?.firstResponder {
-                let responderType = String(describing: type(of: responder))
-                if responderType.contains("TextView") || responderType.contains("TextField") {
-                    let hasModifier = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.option) || event.modifierFlags.contains(.control)
-                    if !hasModifier {
-                        return event
-                    }
-                }
-            }
-            
-            let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
-            let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            
-            for (tabId, shortcut) in viewModel.tabShortcuts {
-                let targetFlags = NSEvent.ModifierFlags(rawValue: shortcut.modifiers).intersection(.deviceIndependentFlagsMask)
-                if pressedKey == shortcut.key.lowercased() && currentFlags == targetFlags {
-                    if isTabEnabled(tabId) {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .scrollWheel]) { event in
+            if event.type == .keyDown {
+                // If actively recording a shortcut in Settings, capture key press!
+                if let recordingTabId = self.recordingShortcutTabId {
+                    let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                    if !pressedKey.isEmpty {
+                        viewModel.setTabShortcut(tabId: recordingTabId, key: pressedKey, modifiers: flags.rawValue)
                         DispatchQueue.main.async {
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                currentTopTab = tabId
-                                let enabledTabs = self.activeTabs
-                                if let tabIdx = enabledTabs.firstIndex(where: { $0.id == tabId }) {
-                                    tabPageIndex = tabIdx / 2
-                                }
-                            }
+                            self.recordingShortcutTabId = nil
                         }
                         return nil // Consume event
                     }
+                }
+                
+                // If user is actively typing text inside a TextField or TextEditor / NSTextView, ignore single key press without Command/Option/Control modifiers
+                if let responder = NSApp.keyWindow?.firstResponder {
+                    let responderType = String(describing: type(of: responder))
+                    if responderType.contains("TextView") || responderType.contains("TextField") {
+                        let hasModifier = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.option) || event.modifierFlags.contains(.control)
+                        if !hasModifier {
+                            return event
+                        }
+                    }
+                }
+                
+                let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                
+                for (tabId, shortcut) in viewModel.tabShortcuts {
+                    let targetFlags = NSEvent.ModifierFlags(rawValue: shortcut.modifiers).intersection(.deviceIndependentFlagsMask)
+                    if pressedKey == shortcut.key.lowercased() && currentFlags == targetFlags {
+                        if isTabEnabled(tabId) {
+                            DispatchQueue.main.async {
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    currentTopTab = tabId
+                                    let enabledTabs = self.activeTabs
+                                    if let tabIdx = enabledTabs.firstIndex(where: { $0.id == tabId }) {
+                                        tabPageIndex = tabIdx / 2
+                                    }
+                                }
+                            }
+                            return nil // Consume event
+                        }
+                    }
+                }
+            } else if event.type == .scrollWheel {
+                // Ignore scroll events when actively recording a shortcut
+                if recordingShortcutTabId != nil {
+                    return event
+                }
+                
+                // Ignore momentum/inertia scrolls completely
+                if !event.momentumPhase.isEmpty {
+                    return event
+                }
+                
+                let deltaX = event.scrollingDeltaX
+                let deltaY = event.scrollingDeltaY
+                
+                // Switch tabs only when horizontal scrolling is dominant (e.g. 2-finger horizontal swipe/scroll)
+                if abs(deltaX) > abs(deltaY) * 1.5 {
+                    let phase = event.phase
+                    
+                    // Time-based debounce (minimum 400ms between any tab switches to prevent skipping)
+                    let now = Date()
+                    guard now.timeIntervalSince(lastSwipeTime) > 0.4 else {
+                        return nil // Consume scroll event during cooldown
+                    }
+                    
+                    if phase == .began {
+                        accumulatedScrollX = 0
+                        swipeCooldownActive = false
+                    } else if phase == .changed {
+                        if !swipeCooldownActive {
+                            accumulatedScrollX += deltaX
+                            let threshold: CGFloat = 80 // More responsive threshold
+                            
+                            if abs(accumulatedScrollX) > threshold {
+                                swipeCooldownActive = true
+                                lastSwipeTime = now
+                                let direction = accumulatedScrollX > 0 ? -1 : 1
+                                accumulatedScrollX = 0
+                                DispatchQueue.main.async {
+                                    self.cycleTab(direction: direction)
+                                }
+                            }
+                        }
+                    } else if phase == .ended || phase == .cancelled {
+                        accumulatedScrollX = 0
+                        swipeCooldownActive = false
+                    } else if phase.isEmpty {
+                        // Support for mice/momentum scrolling where phase might not be present
+                        accumulatedScrollX += deltaX
+                        let threshold: CGFloat = 30
+                        if abs(accumulatedScrollX) > threshold {
+                            lastSwipeTime = now
+                            let direction = deltaX > 0 ? -1 : 1
+                            accumulatedScrollX = 0
+                            DispatchQueue.main.async {
+                                self.cycleTab(direction: direction)
+                            }
+                        }
+                    }
+                    
+                    // Consume the event to prevent parent ScrollViews from horizontal scrolling
+                    return nil
                 }
             }
             return event

@@ -1,6 +1,6 @@
-# ⌨️ Customizable Tab Keyboard Shortcuts User Manual
+# ⌨️ Tab Keyboard Shortcuts & Swipe Gestures User Manual
 
-Welcome to the **Customizable Tab Keyboard Shortcuts** user guide for Mac ASC. This module allows you to navigate instantly between dashboard tabs using customizable key combinations whenever the Mac ASC panel is open.
+Welcome to the **Tab Shortcuts & Gestures** user guide for Mac ASC. This module allows you to navigate instantly between dashboard tabs using customizable key combinations or natural two-finger swipe gestures on your trackpad.
 
 ---
 
@@ -20,12 +20,17 @@ Welcome to the **Customizable Tab Keyboard Shortcuts** user guide for Mac ASC. T
    - `⌘3`: Switches to **Quick Notes**
    - `⌘4`: Switches to **Chat with AI**
 
-2. **Interactive Key Recorder**:
+2. **🛝 Two-Finger Swipe Gesture Navigation**:
+   - Swipe horizontally with two fingers on your trackpad to cycle through navigation tabs.
+   - **Circular Loop**: Swiping right at the last tab wraps back to the first tab, and vice versa.
+   - **Skip Prevention**: Built-in gesture cooldowns ensure a single swipe advances exactly one tab at a time.
+
+3. **Interactive Key Recorder**:
    - Easily reassign any tab to custom key combinations (e.g. `⌥1..4`, `⌃D`, `Ctrl+N`) in Settings.
 
-3. **Window-Scoped Safety (Zero Keylogging)**:
+4. **Window-Scoped Safety (Zero Telemetry)**:
    - Event monitoring runs **strictly while the Mac ASC window is open**.
-   - When the panel is closed, monitoring is destroyed, using **0% CPU** and **0 MB RAM** with zero possibility of key collisions with other apps.
+   - When the panel is closed, monitoring is destroyed, using **0% CPU** and **0 MB RAM** with zero possibility of key or scroll collisions with other apps.
 
 <p align="center">
   <img src="../Screenshots/keyboard_shortcuts_recording.png" width="480" alt="Tab Shortcut Badge Recording State"/>
@@ -43,20 +48,18 @@ Welcome to the **Customizable Tab Keyboard Shortcuts** user guide for Mac ASC. T
 5. Press your desired key combination (e.g., press `Option + N` -> `⌥N`).
 6. The badge instantly updates to `⌥N` and saves to your preferences!
 
-### Example 2: Navigating Between Tabs
+### Example 2: Swiping to Switch Tabs
 1. Open the Mac ASC dropdown from your menu bar.
-2. Press `⌘2` to jump to **Custom Commands**.
-3. Press `⌘3` to jump to **Quick Notes**.
-4. Press `⌘1` to jump back to **Disk Insight**.
-5. Smooth slide animations will transition between the selected tabs.
+2. Swipe left with two fingers on your trackpad to advance to the next tab (**Custom Commands**).
+3. Swipe left again to go to **Quick Notes**.
+4. Swipe right to go back to **Custom Commands**.
 
-### Example 3: Text Editing Safety
-1. Focus your cursor inside a Quick Note or Search input.
-2. Type text or numbers.
-3. Mac ASC detects that you are actively typing inside a text box and ignores single-character hotkeys, ensuring your writing is never interrupted!
+### Example 3: Text Editing & Vertical Scroll Safety
+1. Focus your cursor inside a Quick Note or Search input -> type text -> single-character hotkeys are automatically ignored so your typing is never interrupted.
+2. Scroll vertically inside the Custom Commands or Quick Notes view -> vertical scrolling works completely normally without switching tabs.
 
 ---
 
 ## 💡 System Protection & Reset
 - Click **Reset Shortcuts** in Settings anytime to restore default `⌘1`, `⌘2`, `⌘3`, `⌘4`.
-- No global keylogger permissions are requested or required.
+- No global keylogger or accessibility permissions are requested or required.
