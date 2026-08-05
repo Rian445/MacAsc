@@ -239,6 +239,25 @@ struct DropdownView: View {
                         .onAppear {
                             viewModel.loadAvailableModels()
                         }
+                } else if tabToRender == 4 {
+                    // Screen Recorder View
+                    ScrollView(.vertical, showsIndicators: false) {
+                        screenRecorderSection
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
+                    .onAppear {
+                        viewModel.loadRecentRecordings()
+                        if viewModel.screenRecordCaptureMode == "selected" && !viewModel.isRecording {
+                            CropSelectionWindow.show()
+                        }
+                    }
+                    .onDisappear {
+                        CropSelectionWindow.hide()
+                    }
                 } else {
                     // Fallback empty view if all tabs disabled
                     VStack(spacing: 12) {
@@ -501,7 +520,8 @@ struct DropdownView: View {
             0: AppTab(id: 0, title: "Disk Insight", icon: "chart.pie.fill", accentColor: .cyan),
             1: AppTab(id: 1, title: "Custom Commands", icon: "terminal.fill", accentColor: .blue),
             2: AppTab(id: 2, title: "Quick Note", icon: "note.text", accentColor: .yellow),
-            3: AppTab(id: 3, title: "Chat with AI", icon: "cpu.fill", accentColor: .purple)
+            3: AppTab(id: 3, title: "Chat with AI", icon: "cpu.fill", accentColor: .purple),
+            4: AppTab(id: 4, title: "Screen Recorder", icon: "record.circle", accentColor: .red)
         ]
         
         var result: [AppTab] = []
@@ -511,6 +531,7 @@ struct DropdownView: View {
             else if id == 1 && viewModel.enableCustomCommands { result.append(tab) }
             else if id == 2 && viewModel.enableQuickNotes { result.append(tab) }
             else if id == 3 && viewModel.enableAiChat { result.append(tab) }
+            else if id == 4 && viewModel.enableScreenRecorder { result.append(tab) }
         }
         return result
     }
@@ -521,6 +542,365 @@ struct DropdownView: View {
             return currentTopTab
         }
         return enabled.first?.id ?? 0
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let hrs = Int(duration) / 3600
+        let mins = (Int(duration) % 3600) / 60
+        let secs = Int(duration) % 60
+        return String(format: "%02d:%02d:%02d", hrs, mins, secs)
+    }
+    
+    private var screenRecorderSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Main Recording Status/Control Card
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(viewModel.isRecording ? Color.red : Color.gray)
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(viewModel.isRecording ? 1.2 : 1.0)
+                        .animation(
+                            viewModel.isRecording ? 
+                            Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true) : 
+                            .default, 
+                            value: viewModel.isRecording
+                        )
+                    
+                    Text(viewModel.isRecording ? "RECORDING ACTIVE" : "SCREEN RECORDER STANDBY")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    if viewModel.isRecording {
+                        Text(formatDuration(viewModel.recordingDuration))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.red)
+                    }
+                }
+                
+                if viewModel.isRecording {
+                    HStack(spacing: 8) {
+                        // Pause / Resume button
+                        Button(action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                if viewModel.isRecordingPaused {
+                                    viewModel.resumeScreenRecording()
+                                } else {
+                                    viewModel.pauseScreenRecording()
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: viewModel.isRecordingPaused ? "play.fill" : "pause.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(viewModel.isRecordingPaused ? "Resume" : "Pause")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.orange.opacity(0.85))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        
+                        // Stop button
+                        Button(action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                viewModel.stopScreenRecording()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "square.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("Stop")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.red.opacity(0.85))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            viewModel.startScreenRecording()
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Start Recording")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.blue.opacity(0.85))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            
+            // Preferences section
+            VStack(alignment: .leading, spacing: 10) {
+                Text("RECORDING PREFERENCES")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
+                
+                VStack(spacing: 8) {
+                    // Resolution selector
+                    HStack {
+                        Label("Resolution", systemImage: "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Picker("", selection: Binding(
+                            get: { viewModel.screenRecordResolution },
+                            set: { viewModel.setScreenRecordResolution($0) }
+                        )) {
+                            Text("Native").tag("native")
+                            Text("1080p").tag("1080p")
+                            Text("720p").tag("720p")
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 170)
+                    }
+                    
+                    Divider().opacity(0.08)
+                    
+                    // Capture area selector
+                    HStack {
+                        Label("Capture Area", systemImage: "rectangle.dashed.and.paperclip")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Picker("", selection: Binding(
+                            get: { viewModel.screenRecordCaptureMode },
+                            set: { viewModel.setScreenRecordCaptureMode($0) }
+                        )) {
+                            Text("Full Screen").tag("fullscreen")
+                            Text("Window").tag("selected")
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 170)
+                    }
+                    
+                    Divider().opacity(0.08)
+                    
+                    // Frame rate (FPS)
+                    HStack {
+                        Label("Frame Rate", systemImage: "clock.arrow.2.circlepath")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Picker("", selection: Binding(
+                            get: { viewModel.screenRecordFps },
+                            set: { viewModel.setScreenRecordFps($0) }
+                        )) {
+                            Text("30 FPS").tag(30)
+                            Text("60 FPS").tag(60)
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 170)
+                    }
+                    
+                    Divider().opacity(0.08)
+                    
+                    // Quality / Bitrate selector
+                    HStack {
+                        Label("Quality", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Picker("", selection: Binding(
+                            get: { viewModel.screenRecordQuality },
+                            set: { viewModel.setScreenRecordQuality($0) }
+                        )) {
+                            Text("Low").tag("low")
+                            Text("Medium").tag("medium")
+                            Text("High").tag("high")
+                            Text("Ultra").tag("ultra")
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                        .frame(width: 190)
+                    }
+                    
+                    Divider().opacity(0.08)
+                    
+                    // Mic toggle
+                    HStack {
+                        Label("Microphone", systemImage: viewModel.screenRecordMicEnabled ? "mic.fill" : "mic.slash.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: Binding(
+                            get: { viewModel.screenRecordMicEnabled },
+                            set: { _ in viewModel.toggleScreenRecordMic() }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .scaleEffect(0.7)
+                        .frame(width: 28, height: 16)
+                    }
+                    
+                    Divider().opacity(0.08)
+                    
+                    // Save path
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow.opacity(0.85))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Save Location")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.secondary)
+                            Text(viewModel.screenRecordSavePath)
+                                .font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.75))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            viewModel.selectScreenRecordSavePath()
+                        }) {
+                            Text("Browse")
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(5)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 2)
+                }
+                .padding(10)
+                .background(Color.white.opacity(0.03))
+                .cornerRadius(8)
+            }
+            
+            // Recent Recordings listing
+            VStack(alignment: .leading, spacing: 8) {
+                Text("RECENT RECORDINGS")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
+                
+                if viewModel.recentRecordings.isEmpty {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 6) {
+                            Image(systemName: "video.slash")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text("No recent screen recordings found")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 16)
+                        Spacer()
+                    }
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(8)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(viewModel.recentRecordings, id: \.self) { fileURL in
+                            HStack(spacing: 8) {
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.red.opacity(0.85))
+                                
+                                Text(fileURL.lastPathComponent)
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    NSWorkspace.shared.open(fileURL)
+                                }) {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.white)
+                                        .padding(5)
+                                        .background(Color.white.opacity(0.08))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button(action: {
+                                    NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                                }) {
+                                    Image(systemName: "folder")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.white)
+                                        .padding(5)
+                                        .background(Color.white.opacity(0.08))
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.02))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+        }
     }
     
     private func tweakToggleRow(title: String, icon: String, color: Color, isOn: Binding<Bool>) -> some View {
@@ -550,6 +930,7 @@ struct DropdownView: View {
         case 1: return ("Custom Commands", "terminal.fill", .blue)
         case 2: return ("Quick Note", "note.text", .yellow)
         case 3: return ("Chat with AI", "cpu.fill", .purple)
+        case 4: return ("Screen Recorder", "record.circle", .red)
         default: return ("Tab", "square.fill", .white)
         }
     }
@@ -560,6 +941,7 @@ struct DropdownView: View {
         case 1: return viewModel.enableCustomCommands
         case 2: return viewModel.enableQuickNotes
         case 3: return viewModel.enableAiChat
+        case 4: return viewModel.enableScreenRecorder
         default: return false
         }
     }
@@ -574,6 +956,8 @@ struct DropdownView: View {
             return Binding(get: { viewModel.enableQuickNotes }, set: { viewModel.setTweak("TweakQuickNote", value: $0) })
         case 3:
             return Binding(get: { viewModel.enableAiChat }, set: { viewModel.setTweak("TweakChatWithAi", value: $0) })
+        case 4:
+            return Binding(get: { viewModel.enableScreenRecorder }, set: { viewModel.setTweak("TweakScreenRecorder", value: $0) })
         default:
             return .constant(true)
         }

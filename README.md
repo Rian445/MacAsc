@@ -57,15 +57,21 @@ Mac ASC combines system storage management, custom shell automation, instant not
 - **Interactive Terminal Handoff**: Resume active chat threads directly in Terminal with `cd` workspace navigation.
 - 📖 *Want to learn more? Read the complete [AI Assistant User Manual](docs/AI_ASSISTANT.md) and technical [AI Architecture Guide](AI_ARCHITECTURE.md).*
 
-### ⌨️ 5. Customizable Tab Keyboard Shortcuts
-- **Instant Tab Switching**: Switch between tabs (`⌘1` Disk Insight, `⌘2` Commands, `⌘3` Quick Notes, `⌘4` Chat with AI) when the Mac ASC panel is open.
+### 🎥 5. Native Screen Recorder (MP4 Output)
+- **Native Capture Engine**: High-performance screen capture powered by AVFoundation with standard H.264 `.mp4` video compression.
+- **Configurable Settings**: Choose resolution (Native, 1080p, 720p), capture mode (Full Screen, Window), save path custom folder, and microphone input.
+- **Recent Recordings & Quick Actions**: View last 5 recordings to instantly play in QuickTime or reveal in Finder.
+- 📖 *Want to learn more? Read the complete [Screen Recorder User Manual](docs/SCREEN_RECORDER.md).*
+
+### ⌨️ 6. Customizable Tab Keyboard Shortcuts
+- **Instant Tab Switching**: Switch between tabs (`⌘1` Disk Insight, `⌘2` Commands, `⌘3` Quick Notes, `⌘4` Chat with AI, `⌘5` Screen Recorder) when the Mac ASC panel is open.
 - **Interactive Key Recorder**: Reassign shortcuts for any tab in Settings using a live key recorder badge.
 - **Local Window Security**: Key monitoring runs strictly while the window is active, guaranteeing zero keylogging or collisions when closed.
 - 📖 *Want to learn more? Read the complete [Keyboard Shortcuts User Manual](docs/KEYBOARD_SHORTCUTS.md) and [Privacy Policy](PRIVACY.md).*
 
-### ⚙️ 6. Settings, Tab Tweaks & Backup System
+### ⚙️ 7. Settings, Tab Tweaks & Backup System
 - **Dashboard Tweaks**: Reorder tabs and toggle components on or off.
-- **JSON Backup & Restore**: Export all notes, commands, sorting structures, and AI threads to a single JSON backup file.
+- **JSON Backup & Restore**: Export all notes, commands, sorting structures, and AI preferences to a single JSON backup file.
 - 📖 *Want to learn more? Read the complete [Settings & Backup User Manual](docs/SETTINGS_AND_BACKUP.md).*
 
 ---
@@ -80,7 +86,8 @@ For complete step-by-step instructions, examples, and technical specifications, 
 | ⚡ **Custom Commands** | Shell automation, Terminal mode vs Silent background mode & process termination | [Read Manual](docs/CUSTOM_COMMANDS.md) |
 | 📝 **Quick Notes** | Viewport virtualization, read-only mode & folder drag-and-drop sorting | [Read Manual](docs/QUICK_NOTES.md) |
 | 🤖 **AI Assistant** | CLI models (`opencode`/`codex`/`agy`), workspace attachments & Terminal handoff | [Read Manual](docs/AI_ASSISTANT.md) |
-| ⌨️ **Keyboard Shortcuts** | Configurable tab hotkeys (`⌘1..4`), live key recorder & local window safety | [Read Manual](docs/KEYBOARD_SHORTCUTS.md) |
+| 🎥 **Screen Recorder** | Configurable screen recording (resolution, mic audio, save path, window capture) | [Read Manual](docs/SCREEN_RECORDER.md) |
+| ⌨️ **Keyboard Shortcuts** | Configurable tab hotkeys (`⌘1..5`), live key recorder & local window safety | [Read Manual](docs/KEYBOARD_SHORTCUTS.md) |
 | ⚙️ **Settings & Backup** | Tab reordering, component toggles & full JSON settings export/import | [Read Manual](docs/SETTINGS_AND_BACKUP.md) |
 | 🏗️ **AI Architecture** | Multi-agent execution pipeline, session hash persistence & 0 MB idle RAM model | [Read Specs](AI_ARCHITECTURE.md) |
 | 🔒 **Privacy Policy** | Security guarantees, window-scoped key monitoring & ATS network rules | [Read Policy](PRIVACY.md) |

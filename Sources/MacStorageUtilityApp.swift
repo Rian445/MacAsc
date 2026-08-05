@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 @MainActor
 class KeyPanel: NSPanel {
@@ -13,12 +14,17 @@ class StatusBarController: NSObject {
     private var statusItem: NSStatusItem
     private var popover: KeyPanel
     private var viewModel: StorageViewModel
+    private var stopStatusItem: NSStatusItem?
+    private var cancellables = Set<AnyCancellable>()
     
     init(viewModel: StorageViewModel) {
         self.viewModel = viewModel
         
-        // Create the Status Item in the Menu Bar
+        // Create the Status Item in the Menu Bar (placed right)
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        
+        // Create the Stop button Status Item directly after to anchor its position to its left
+        self.stopStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         // Create the NSPanel (translucent dropdown window)
         self.popover = KeyPanel(
@@ -48,6 +54,14 @@ class StatusBarController: NSObject {
             button.target = self
         }
         
+        if let button = self.stopStatusItem?.button {
+            button.image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Stop Recording")
+            button.contentTintColor = .systemRed
+            button.action = #selector(stopRecordingClicked(_:))
+            button.target = self
+        }
+        self.stopStatusItem?.isVisible = false
+        
         // Observe when the window loses focus to dismiss it
         NotificationCenter.default.addObserver(
             self,
@@ -55,6 +69,44 @@ class StatusBarController: NSObject {
             name: NSWindow.didResignKeyNotification,
             object: self.popover
         )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(closePopoverNotification(_:)),
+            name: Notification.Name("ClosePopover"),
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showPopoverNotification(_:)),
+            name: Notification.Name("ShowPopover"),
+            object: nil
+        )
+        
+        // Listen to isRecording changes to dynamically present/hide status stop button
+        viewModel.$isRecording
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isRecording in
+                self?.updateStopButton(isRecording: isRecording)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateStopButton(isRecording: Bool) {
+        self.stopStatusItem?.isVisible = isRecording
+    }
+    
+    @objc func stopRecordingClicked(_ sender: AnyObject?) {
+        viewModel.stopScreenRecording()
+    }
+    
+    @objc func closePopoverNotification(_ notification: Notification) {
+        self.popover.orderOut(nil)
+    }
+    
+    @objc func showPopoverNotification(_ notification: Notification) {
+        showPopover()
     }
     
     @objc func togglePopover(_ sender: AnyObject?) {

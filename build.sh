@@ -100,6 +100,10 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <false/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Mac ASC requires microphone access to record voice audio alongside screen recordings.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Mac ASC requires screen recording access to capture your display or selected windows.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

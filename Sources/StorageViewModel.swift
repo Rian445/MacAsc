@@ -35,13 +35,31 @@ class StorageViewModel: ObservableObject {
     @Published var enableCustomCommands = true
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
-    @Published var tabOrder: [Int] = [0, 1, 2, 3]
+    @Published var enableScreenRecorder = true
+    @Published var tabOrder: [Int] = [0, 1, 2, 3, 4]
     @Published var tabShortcuts: [Int: TabShortcut] = [:]
     @Published var customCommandFolderOrder: [String] = []
     @Published var quickNoteFolderOrder: [String] = []
     @Published var availableModels: [String] = []
     @Published var selectedModel: String = ""
     @Published var favoriteModels: [String] = []
+    
+    // Screen Recorder state variables
+    @Published var screenRecordResolution: String = "native"
+    @Published var screenRecordCaptureMode: String = "fullscreen"
+    @Published var screenRecordSavePath: String = "~/Desktop"
+    @Published var screenRecordMicEnabled: Bool = false
+    @Published var screenRecordFps: Int = 60
+    @Published var screenRecordQuality: String = "medium"
+    @Published var isRecording: Bool = false
+    @Published var isRecordingPaused: Bool = false
+    @Published var recordingDuration: TimeInterval = 0
+    @Published var recentRecordings: [URL] = []
+    
+    private let recorder = ScreenRecorder()
+    private var recordingTimer: AnyCancellable? = nil
+    private var recordingStartTime: Date? = nil
+    private var accumulatedDuration: TimeInterval = 0
     private var activeAiProcess: Process? = nil
     private var cachedOpencodePath: String? = nil
     private var cachedCodexPath: String? = nil
@@ -88,21 +106,23 @@ class StorageViewModel: ObservableObject {
         self.enableCustomCommands = UserDefaults.standard.object(forKey: "TweakCustomCommands") as? Bool ?? true
         self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
         self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
+        self.enableScreenRecorder = UserDefaults.standard.object(forKey: "TweakScreenRecorder") as? Bool ?? true
         
         self.customCommandFolderOrder = UserDefaults.standard.stringArray(forKey: "CustomCommandFolderOrder") ?? []
         self.quickNoteFolderOrder = UserDefaults.standard.stringArray(forKey: "QuickNoteFolderOrder") ?? []
         
         if let savedOrder = UserDefaults.standard.array(forKey: "DashboardTabOrder") as? [Int], !savedOrder.isEmpty {
-            var order = savedOrder.filter { [0, 1, 2, 3].contains($0) }
-            for id in [0, 1, 2, 3] {
+            var order = savedOrder.filter { [0, 1, 2, 3, 4].contains($0) }
+            for id in [0, 1, 2, 3, 4] {
                 if !order.contains(id) { order.append(id) }
             }
             self.tabOrder = order
         } else {
-            self.tabOrder = [0, 1, 2, 3]
+            self.tabOrder = [0, 1, 2, 3, 4]
         }
         
         loadTabShortcuts()
+        loadScreenRecorderPreferences()
     }
     
     // MARK: - Folder Tree & Reordering Helpers
@@ -446,9 +466,9 @@ class StorageViewModel: ObservableObject {
         saveTabOrder()
     }
     
-    /// Resets tab display order to default [0, 1, 2, 3]
+    /// Resets tab display order to default [0, 1, 2, 3, 4]
     func resetTabOrder() {
-        tabOrder = [0, 1, 2, 3]
+        tabOrder = [0, 1, 2, 3, 4]
         saveTabOrder()
     }
     
@@ -474,14 +494,15 @@ class StorageViewModel: ObservableObject {
         }
     }
     
-    /// Resets tab shortcuts to default (Cmd+1 for Disk, Cmd+2 for Commands, Cmd+3 for Notes, Cmd+4 for AI)
+    /// Resets tab shortcuts to default (Cmd+1 for Disk, Cmd+2 for Commands, Cmd+3 for Notes, Cmd+4 for AI, Cmd+5 for Recorder)
     func resetTabShortcutsToDefault() {
         let cmdModifier = NSEvent.ModifierFlags.command.rawValue
         self.tabShortcuts = [
             0: TabShortcut(key: "1", modifiers: cmdModifier),
             1: TabShortcut(key: "2", modifiers: cmdModifier),
             2: TabShortcut(key: "3", modifiers: cmdModifier),
-            3: TabShortcut(key: "4", modifiers: cmdModifier)
+            3: TabShortcut(key: "4", modifiers: cmdModifier),
+            4: TabShortcut(key: "5", modifiers: cmdModifier)
         ]
         saveTabShortcuts()
     }
@@ -2324,6 +2345,7 @@ class StorageViewModel: ObservableObject {
         "TweakCustomCommands",
         "TweakQuickNote",
         "TweakChatWithAi",
+        "TweakScreenRecorder",
         "DashboardTabOrder",
         "TabKeyboardShortcuts",
         "CustomCommandFolderOrder",
@@ -2336,7 +2358,13 @@ class StorageViewModel: ObservableObject {
         "AISelectedModel",
         "AIFavoriteModels",
         "AIAllowSystemActions",
-        "CachedStorageBreakdown"
+        "CachedStorageBreakdown",
+        "ScreenRecordResolution",
+        "ScreenRecordCaptureMode",
+        "ScreenRecordSavePath",
+        "ScreenRecordMicEnabled",
+        "ScreenRecordFps",
+        "ScreenRecordQuality"
     ]
     
     /// Exports all user settings, tab sorting order, folder sorting orders, pinned folders, commands, notes, tweaks, and AI history to a JSON file
@@ -2454,6 +2482,203 @@ class StorageViewModel: ObservableObject {
                 NSLog("Failed to restore settings backup: \(error.localizedDescription)")
             }
         }
+    }
+    
+    // MARK: - Screen Recorder Methods
+    
+    func loadScreenRecorderPreferences() {
+        self.enableScreenRecorder = UserDefaults.standard.object(forKey: "TweakScreenRecorder") as? Bool ?? true
+        self.screenRecordResolution = UserDefaults.standard.string(forKey: "ScreenRecordResolution") ?? "native"
+        self.screenRecordCaptureMode = UserDefaults.standard.string(forKey: "ScreenRecordCaptureMode") ?? "fullscreen"
+        self.screenRecordSavePath = UserDefaults.standard.string(forKey: "ScreenRecordSavePath") ?? "~/Desktop"
+        self.screenRecordMicEnabled = UserDefaults.standard.bool(forKey: "ScreenRecordMicEnabled")
+        self.screenRecordFps = UserDefaults.standard.object(forKey: "ScreenRecordFps") as? Int ?? 60
+        self.screenRecordQuality = UserDefaults.standard.string(forKey: "ScreenRecordQuality") ?? "medium"
+        loadRecentRecordings()
+    }
+    
+    func saveScreenRecorderPreferences() {
+        UserDefaults.standard.set(enableScreenRecorder, forKey: "TweakScreenRecorder")
+        UserDefaults.standard.set(screenRecordResolution, forKey: "ScreenRecordResolution")
+        UserDefaults.standard.set(screenRecordCaptureMode, forKey: "ScreenRecordCaptureMode")
+        UserDefaults.standard.set(screenRecordSavePath, forKey: "ScreenRecordSavePath")
+        UserDefaults.standard.set(screenRecordMicEnabled, forKey: "ScreenRecordMicEnabled")
+        UserDefaults.standard.set(screenRecordFps, forKey: "ScreenRecordFps")
+        UserDefaults.standard.set(screenRecordQuality, forKey: "ScreenRecordQuality")
+    }
+    
+    func setScreenRecordResolution(_ val: String) {
+        self.screenRecordResolution = val
+        saveScreenRecorderPreferences()
+    }
+    
+    func setScreenRecordCaptureMode(_ val: String) {
+        self.screenRecordCaptureMode = val
+        saveScreenRecorderPreferences()
+        if val == "selected" {
+            CropSelectionWindow.show()
+        } else {
+            CropSelectionWindow.hide()
+        }
+    }
+    
+    func setScreenRecordFps(_ val: Int) {
+        self.screenRecordFps = val
+        saveScreenRecorderPreferences()
+    }
+    
+    func setScreenRecordQuality(_ val: String) {
+        self.screenRecordQuality = val
+        saveScreenRecorderPreferences()
+    }
+    
+    func toggleScreenRecordMic() {
+        self.screenRecordMicEnabled.toggle()
+        saveScreenRecorderPreferences()
+    }
+    
+    func selectScreenRecordSavePath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Select Save Directory"
+        
+        if panel.runModal() == .OK {
+            if let url = panel.url {
+                self.screenRecordSavePath = url.path
+                saveScreenRecorderPreferences()
+                loadRecentRecordings()
+            }
+        }
+    }
+    
+    func startScreenRecording() {
+        guard !isRecording else { return }
+        
+        let path = (screenRecordSavePath as NSString).expandingTildeInPath
+        let folderURL = URL(fileURLWithPath: path)
+        
+        // Ensure destination folder exists
+        try? FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH.mm.ss"
+        let timestamp = formatter.string(from: Date())
+        let fileURL = folderURL.appendingPathComponent("recording_\(timestamp).mp4")
+        
+        var cropRect: CGRect? = nil
+        if screenRecordCaptureMode == "selected" {
+            cropRect = CropSelectionWindow.getCropRect()
+            CropSelectionWindow.hide()
+        }
+        
+        recorder.onStart = { [weak self] in
+            guard let self = self else { return }
+            self.isRecording = true
+            self.isRecordingPaused = false
+            self.recordingStartTime = Date()
+            self.recordingDuration = 0
+            self.accumulatedDuration = 0
+            
+            // Start duration timer
+            self.recordingTimer = Timer.publish(every: 1.0, on: .main, in: .common)
+                .autoconnect()
+                .sink { [weak self] _ in
+                    guard let self = self else { return }
+                    if !self.isRecordingPaused, let start = self.recordingStartTime {
+                        self.recordingDuration = self.accumulatedDuration + Date().timeIntervalSince(start)
+                    }
+                }
+            
+            // Close utility window immediately when recording starts
+            NotificationCenter.default.post(name: Notification.Name("ClosePopover"), object: nil)
+        }
+        
+        recorder.start(
+            destinationURL: fileURL,
+            resolution: screenRecordResolution,
+            captureMode: screenRecordCaptureMode,
+            micEnabled: screenRecordMicEnabled,
+            fps: screenRecordFps,
+            quality: screenRecordQuality,
+            cropRect: cropRect
+        ) { [weak self] outputURL, error in
+            guard let self = self else { return }
+            self.isRecording = false
+            self.isRecordingPaused = false
+            self.recordingTimer?.cancel()
+            self.recordingTimer = nil
+            self.recordingStartTime = nil
+            self.recordingDuration = 0
+            self.accumulatedDuration = 0
+            
+            if let err = error {
+                print("Recording failed: \(err.localizedDescription)")
+            }
+            
+            self.loadRecentRecordings()
+            
+            // Show custom crop area window overlay again after recording completes
+            if self.screenRecordCaptureMode == "selected" {
+                CropSelectionWindow.show()
+            }
+        }
+    }
+    
+    func pauseScreenRecording() {
+        guard isRecording && !isRecordingPaused else { return }
+        recorder.pause()
+        isRecordingPaused = true
+        
+        if let start = recordingStartTime {
+            accumulatedDuration += Date().timeIntervalSince(start)
+        }
+        recordingStartTime = nil
+        
+        // Show utility window when recording is paused
+        NotificationCenter.default.post(name: Notification.Name("ShowPopover"), object: nil)
+    }
+    
+    func resumeScreenRecording() {
+        guard isRecording && isRecordingPaused else { return }
+        recorder.resume()
+        isRecordingPaused = false
+        recordingStartTime = Date()
+        
+        // Close window immediately when recording resumes
+        NotificationCenter.default.post(name: Notification.Name("ClosePopover"), object: nil)
+    }
+    
+    func stopScreenRecording() {
+        guard isRecording else { return }
+        recorder.stop()
+    }
+    
+    func loadRecentRecordings() {
+        let path = (screenRecordSavePath as NSString).expandingTildeInPath
+        let folderURL = URL(fileURLWithPath: path)
+        
+        let fileKeys: [URLResourceKey] = [.contentModificationDateKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: fileKeys,
+            options: .skipsHiddenFiles
+        ) else {
+            self.recentRecordings = []
+            return
+        }
+        
+        // Filter for MP4s and sort by modification date descending (newest first)
+        let sortedMp4s = files
+            .filter { $0.pathExtension.lowercased() == "mp4" }
+            .sorted { file1, file2 in
+                let date1 = (try? file1.resourceValues(forKeys: Set(fileKeys)).contentModificationDate) ?? Date.distantPast
+                let date2 = (try? file2.resourceValues(forKeys: Set(fileKeys)).contentModificationDate) ?? Date.distantPast
+                return date1 > date2
+            }
+        
+        self.recentRecordings = Array(sortedMp4s.prefix(5))
     }
 }
 
