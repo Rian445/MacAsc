@@ -27,6 +27,14 @@ if [ -f "Resources/asc_menubaricon.png" ]; then
     cp "Resources/asc_menubaricon.png" "${RESOURCES_DIR}/asc_menubaricon.png" 2>/dev/null || true
 fi
 
+# Copy customized App Logos
+cp Resources/icons8-walter-white.svg "${RESOURCES_DIR}/" 2>/dev/null || true
+cp Resources/icons8-spider-man-new-25.png "${RESOURCES_DIR}/" 2>/dev/null || true
+cp Resources/icons8-batman-logo-25.png "${RESOURCES_DIR}/" 2>/dev/null || true
+cp Resources/icons8-phoenix-30.apng.apng "${RESOURCES_DIR}/" 2>/dev/null || true
+cp Resources/icons8-recording-50.apng.apng "${RESOURCES_DIR}/" 2>/dev/null || true
+cp Resources/icons8-fire-40.apng.apng "${RESOURCES_DIR}/" 2>/dev/null || true
+
 # Compile custom application icon if app_icon.png exists
 if [ -f "app_icon.png" ]; then
     echo "Converting app_icon.png into native macOS AppIcon.icns..."

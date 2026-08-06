@@ -693,7 +693,7 @@ struct DropdownView: View {
                         }
                         .pickerStyle(.segmented)
                         .controlSize(.small)
-                        .frame(width: 170)
+                        .frame(width: 190)
                     }
                     
                     Divider().opacity(0.08)
@@ -715,7 +715,7 @@ struct DropdownView: View {
                         }
                         .pickerStyle(.segmented)
                         .controlSize(.small)
-                        .frame(width: 170)
+                        .frame(width: 190)
                     }
                     
                     Divider().opacity(0.08)
@@ -737,7 +737,7 @@ struct DropdownView: View {
                         }
                         .pickerStyle(.segmented)
                         .controlSize(.small)
-                        .frame(width: 170)
+                        .frame(width: 190)
                     }
                     
                     Divider().opacity(0.08)
@@ -825,8 +825,12 @@ struct DropdownView: View {
                     .padding(.top, 2)
                 }
                 .padding(10)
-                .background(Color.white.opacity(0.03))
+                .background(Color.white.opacity(0.04))
                 .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                )
             }
             
             // Recent Recordings listing
@@ -986,6 +990,69 @@ struct DropdownView: View {
             } else {
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 12) {
+                        // Menu Bar Logo Section
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("MENU BAR LOGO CUSTOMIZATION")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.secondary)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Menu Bar Icon", systemImage: "paintpalette.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.85))
+                                
+                                Picker("", selection: Binding(
+                                    get: { viewModel.selectedLogo },
+                                    set: { viewModel.setSelectedLogo($0) }
+                                )) {
+                                    Text("Classic").tag("classic")
+                                    Text("Walter").tag("walter")
+                                    Text("Spider").tag("spiderman")
+                                    Text("Batman").tag("batman")
+                                }
+                                .pickerStyle(.segmented)
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .padding(10)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                            
+                            // Active Recording Logo Section
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Active Recording Icon", systemImage: "record.circle.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.85))
+                                
+                                Picker("", selection: Binding(
+                                    get: { viewModel.selectedRecordLogo },
+                                    set: { viewModel.setSelectedRecordLogo($0) }
+                                )) {
+                                    Text("Phoenix").tag("phoenix")
+                                    Text("Record").tag("recording")
+                                    Text("Fire").tag("fire")
+                                }
+                                .pickerStyle(.segmented)
+                                .controlSize(.small)
+                                .frame(maxWidth: .infinity)
+                            }
+                            .padding(10)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                        }
+                        
+                        Divider()
+                            .opacity(0.12)
+                            .padding(.vertical, 4)
+                            
                         Text("TAB ORDER & DISPLAY TWEAKS")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(.secondary)
@@ -1274,9 +1341,24 @@ extension DropdownView {
 
             // Centered Title & Icon
             HStack(spacing: 6) {
-                Image(systemName: "externaldrive")
-                    .foregroundColor(.blue)
-                    .font(.title3)
+                let logoInfo = viewModel.getLogoFileInfo()
+                if logoInfo.ext == "system" {
+                    Image(systemName: logoInfo.name)
+                        .foregroundColor(.blue)
+                        .font(.title2)
+                } else if let path = Bundle.main.path(forResource: logoInfo.name, ofType: logoInfo.ext),
+                          let nsImage = NSImage(contentsOfFile: path) {
+                    Image(nsImage: nsImage)
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 23, height: 23)
+                        .foregroundColor(.white)
+                } else {
+                    Image(systemName: "externaldrive")
+                        .foregroundColor(.blue)
+                        .font(.title3)
+                }
                 
                 Text("Mac ASC")
                     .font(.headline)

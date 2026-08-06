@@ -14,7 +14,6 @@ class StatusBarController: NSObject {
     private var statusItem: NSStatusItem
     private var popover: KeyPanel
     private var viewModel: StorageViewModel
-    private var stopStatusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
     
     init(viewModel: StorageViewModel) {
@@ -22,9 +21,6 @@ class StatusBarController: NSObject {
         
         // Create the Status Item in the Menu Bar (placed right)
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        // Create the Stop button Status Item directly after to anchor its position to its left
-        self.stopStatusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         // Create the NSPanel (translucent dropdown window)
         self.popover = KeyPanel(
@@ -54,14 +50,6 @@ class StatusBarController: NSObject {
             button.target = self
         }
         
-        if let button = self.stopStatusItem?.button {
-            button.image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Stop Recording")
-            button.contentTintColor = .systemRed
-            button.action = #selector(stopRecordingClicked(_:))
-            button.target = self
-        }
-        self.stopStatusItem?.isVisible = false
-        
         // Observe when the window loses focus to dismiss it
         NotificationCenter.default.addObserver(
             self,
@@ -84,21 +72,75 @@ class StatusBarController: NSObject {
             object: nil
         )
         
-        // Listen to isRecording changes to dynamically present/hide status stop button
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateMenuBarIcon),
+            name: Notification.Name("UpdateMenuBarIcon"),
+            object: nil
+        )
+        
+        updateMenuBarIcon()
+        
+        // Listen to isRecording changes to dynamically update icon
         viewModel.$isRecording
             .receive(on: RunLoop.main)
-            .sink { [weak self] isRecording in
-                self?.updateStopButton(isRecording: isRecording)
+            .sink { [weak self] _ in
+                self?.updateMenuBarIcon()
             }
             .store(in: &cancellables)
     }
     
-    private func updateStopButton(isRecording: Bool) {
-        self.stopStatusItem?.isVisible = isRecording
-    }
-    
-    @objc func stopRecordingClicked(_ sender: AnyObject?) {
-        viewModel.stopScreenRecording()
+    @objc func updateMenuBarIcon() {
+        if let button = self.statusItem.button {
+            let logoInfo: (name: String, ext: String)
+            if viewModel.isRecording {
+                logoInfo = viewModel.getRecordLogoFileInfo()
+            } else {
+                logoInfo = viewModel.getLogoFileInfo()
+            }
+            
+            // Clean up any previously added animated views
+            let animatedTag = 999
+            button.subviews.first(where: { $0.tag == animatedTag })?.removeFromSuperview()
+            button.image = nil
+            
+            let iconSize: CGFloat = 20
+            
+            if logoInfo.ext == "system" {
+                if let image = NSImage(systemSymbolName: logoInfo.name, accessibilityDescription: "Mac ASC") {
+                    image.size = NSSize(width: iconSize, height: iconSize)
+                    button.image = image
+                }
+            } else if let path = Bundle.main.path(forResource: logoInfo.name, ofType: logoInfo.ext),
+                      let image = NSImage(contentsOfFile: path) {
+                image.size = NSSize(width: iconSize, height: iconSize)
+                // Only the Fire active recording icon remains colored; others render as templates
+                let isFire = (logoInfo.name == "icons8-fire-40.apng")
+                image.isTemplate = !isFire
+                
+                if logoInfo.ext == "apng" {
+                    let btnSize = button.frame.size
+                    let x = (btnSize.width - iconSize) / 2
+                    let y = (btnSize.height - iconSize) / 2
+                    
+                    let imageView = NSImageView(frame: NSRect(x: x, y: y, width: iconSize, height: iconSize))
+                    imageView.tag = animatedTag
+                    imageView.image = image
+                    imageView.animates = true
+                    imageView.imageScaling = .scaleProportionallyUpOrDown
+                    imageView.unregisterDraggedTypes()
+                    
+                    button.addSubview(imageView)
+                } else {
+                    button.image = image
+                }
+            } else {
+                if let image = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Mac ASC") {
+                    image.size = NSSize(width: iconSize, height: iconSize)
+                    button.image = image
+                }
+            }
+        }
     }
     
     @objc func closePopoverNotification(_ notification: Notification) {

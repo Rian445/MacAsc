@@ -43,6 +43,8 @@ class StorageViewModel: ObservableObject {
     @Published var availableModels: [String] = []
     @Published var selectedModel: String = ""
     @Published var favoriteModels: [String] = []
+    @Published var selectedLogo: String = "walter"
+    @Published var selectedRecordLogo: String = "phoenix"
     
     // Screen Recorder state variables
     @Published var screenRecordResolution: String = "native"
@@ -120,6 +122,10 @@ class StorageViewModel: ObservableObject {
         } else {
             self.tabOrder = [0, 1, 2, 3, 4]
         }
+        
+        self.selectedLogo = UserDefaults.standard.string(forKey: "SelectedLogo") ?? "walter"
+        self.selectedRecordLogo = UserDefaults.standard.string(forKey: "SelectedRecordLogo") ?? "phoenix"
+        NotificationCenter.default.post(name: Notification.Name("UpdateMenuBarIcon"), object: nil)
         
         loadTabShortcuts()
         loadScreenRecorderPreferences()
@@ -2369,7 +2375,9 @@ class StorageViewModel: ObservableObject {
         "ScreenRecordSavePath",
         "ScreenRecordMicEnabled",
         "ScreenRecordFps",
-        "ScreenRecordQuality"
+        "ScreenRecordQuality",
+        "SelectedLogo",
+        "SelectedRecordLogo"
     ]
     
     /// Exports all user settings, tab sorting order, folder sorting orders, pinned folders, commands, notes, tweaks, and AI history to a JSON file
@@ -2555,6 +2563,42 @@ class StorageViewModel: ObservableObject {
                 saveScreenRecorderPreferences()
                 loadRecentRecordings()
             }
+        }
+    }
+    
+    func setSelectedLogo(_ val: String) {
+        self.selectedLogo = val
+        UserDefaults.standard.set(val, forKey: "SelectedLogo")
+        NotificationCenter.default.post(name: Notification.Name("UpdateMenuBarIcon"), object: nil)
+    }
+    
+    func getLogoFileInfo() -> (name: String, ext: String) {
+        switch selectedLogo {
+        case "spiderman":
+            return ("icons8-spider-man-new-25", "png")
+        case "batman":
+            return ("icons8-batman-logo-25", "png")
+        case "classic":
+            return ("externaldrive", "system")
+        default:
+            return ("icons8-walter-white", "svg")
+        }
+    }
+    
+    func setSelectedRecordLogo(_ val: String) {
+        self.selectedRecordLogo = val
+        UserDefaults.standard.set(val, forKey: "SelectedRecordLogo")
+        NotificationCenter.default.post(name: Notification.Name("UpdateMenuBarIcon"), object: nil)
+    }
+    
+    func getRecordLogoFileInfo() -> (name: String, ext: String) {
+        switch selectedRecordLogo {
+        case "recording":
+            return ("icons8-recording-50.apng", "apng")
+        case "fire":
+            return ("icons8-fire-40.apng", "apng")
+        default:
+            return ("icons8-phoenix-30.apng", "apng")
         }
     }
     
