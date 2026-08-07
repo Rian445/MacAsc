@@ -365,6 +365,17 @@ struct DropdownView: View {
             viewModel.stopMonitoringRunningCommands()
             removeKeyboardShortcutMonitor()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            guard let window = notification.object as? NSWindow, window.className.contains("KeyPanel") else { return }
+            viewModel.startMonitoringRunningCommands()
+            viewModel.scanAppSelfSizes()
+            setupKeyboardShortcutMonitor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
+            guard let window = notification.object as? NSWindow, window.className.contains("KeyPanel") else { return }
+            viewModel.stopMonitoringRunningCommands()
+            removeKeyboardShortcutMonitor()
+        }
     }
     
     // MARK: - Local Keyboard Shortcut & Scroll Swipe Monitor

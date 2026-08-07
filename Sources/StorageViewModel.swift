@@ -2614,7 +2614,7 @@ class StorageViewModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH.mm.ss"
         let timestamp = formatter.string(from: Date())
-        let fileURL = folderURL.appendingPathComponent("recording_\(timestamp).mp4")
+        let fileURL = folderURL.appendingPathComponent("recording_\(timestamp).mov")
         
         var cropRect: CGRect? = nil
         if screenRecordCaptureMode == "selected" {
@@ -2718,16 +2718,16 @@ class StorageViewModel: ObservableObject {
             return
         }
         
-        // Filter for MP4s and sort by modification date descending (newest first)
-        let sortedMp4s = files
-            .filter { $0.pathExtension.lowercased() == "mp4" }
+        // Filter for video files (mp4 and mov) and sort by modification date descending (newest first)
+        let sortedVideos = files
+            .filter { ["mp4", "mov"].contains($0.pathExtension.lowercased()) }
             .sorted { file1, file2 in
                 let date1 = (try? file1.resourceValues(forKeys: Set(fileKeys)).contentModificationDate) ?? Date.distantPast
                 let date2 = (try? file2.resourceValues(forKeys: Set(fileKeys)).contentModificationDate) ?? Date.distantPast
                 return date1 > date2
             }
         
-        self.recentRecordings = Array(sortedMp4s.prefix(5))
+        self.recentRecordings = Array(sortedVideos.prefix(5))
     }
 }
 

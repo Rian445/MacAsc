@@ -144,7 +144,7 @@ class StatusBarController: NSObject {
     }
     
     @objc func closePopoverNotification(_ notification: Notification) {
-        self.popover.orderOut(nil)
+        hidePopover()
     }
     
     @objc func showPopoverNotification(_ notification: Notification) {
@@ -153,10 +153,15 @@ class StatusBarController: NSObject {
     
     @objc func togglePopover(_ sender: AnyObject?) {
         if self.popover.isVisible {
-            self.popover.orderOut(nil)
+            hidePopover()
         } else {
             showPopover()
         }
+    }
+    
+    func hidePopover() {
+        self.popover.orderOut(nil)
+        viewModel.stopMonitoringRunningCommands()
     }
     
     func showPopover() {
@@ -184,6 +189,7 @@ class StatusBarController: NSObject {
             self.popover.setFrameOrigin(NSPoint(x: x, y: y))
             self.popover.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            viewModel.startMonitoringRunningCommands()
         }
     }
     
@@ -193,7 +199,7 @@ class StatusBarController: NSObject {
         if NSApp.isActive {
             return
         }
-        self.popover.orderOut(nil)
+        hidePopover()
     }
 }
 
