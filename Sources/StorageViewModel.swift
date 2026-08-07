@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import AppKit
 import UniformTypeIdentifiers
+@preconcurrency import AVFoundation
 
 @MainActor
 class StorageViewModel: ObservableObject {
@@ -2614,7 +2615,8 @@ class StorageViewModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HH.mm.ss"
         let timestamp = formatter.string(from: Date())
-        let fileURL = folderURL.appendingPathComponent("recording_\(timestamp).mp4")
+        let finalURL = folderURL.appendingPathComponent("recording_\(timestamp).mov")
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("temp_recording_\(timestamp).mov")
         
         var cropRect: CGRect? = nil
         if screenRecordCaptureMode == "selected" {
@@ -2644,8 +2646,14 @@ class StorageViewModel: ObservableObject {
             NotificationCenter.default.post(name: Notification.Name("ClosePopover"), object: nil)
         }
         
+        // Remove any potentially lingering file at final path
+        try? FileManager.default.removeItem(at: finalURL)
+        try? FileManager.default.removeItem(at: tempURL)
+        
+        let recordURL = screenRecordMicEnabled ? tempURL : finalURL
+        
         recorder.start(
-            destinationURL: fileURL,
+            destinationURL: recordURL,
             resolution: screenRecordResolution,
             captureMode: screenRecordCaptureMode,
             micEnabled: screenRecordMicEnabled,
@@ -2662,11 +2670,46 @@ class StorageViewModel: ObservableObject {
             self.recordingDuration = 0
             self.accumulatedDuration = 0
             
-            if let err = error {
-                print("Recording failed: \(err.localizedDescription)")
+            let nsErr = error as NSError?
+            let isSuccessful = error == nil || 
+                               nsErr?.code == 11807 || 
+                               nsErr?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+            if !isSuccessful {
+                print("Recording failed: \(error?.localizedDescription ?? "unknown error")")
+                try? FileManager.default.removeItem(at: tempURL)
+                try? FileManager.default.removeItem(at: finalURL)
+                self.loadRecentRecordings()
+                return
             }
             
-            self.loadRecentRecordings()
+            if !self.screenRecordMicEnabled {
+                // If microphone is disabled, recording is already written directly to finalURL, no transcoding needed!
+                DispatchQueue.main.async {
+                    self.loadRecentRecordings()
+                }
+            } else {
+                // If microphone is enabled, transcode raw PCM audio to AAC inside the final .mov container (H.265/HEVC)
+                let asset = AVAsset(url: tempURL)
+                let preset = AVAssetExportPresetHEVCHighestQuality
+                
+                guard let transcodeSession = AVAssetExportSession(asset: asset, presetName: preset) else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    DispatchQueue.main.async {
+                        self.loadRecentRecordings()
+                    }
+                    return
+                }
+                transcodeSession.outputURL = finalURL
+                transcodeSession.outputFileType = .mov // Keep original .mov format!
+                
+                transcodeSession.exportAsynchronously { [weak self] in
+                    guard let self = self else { return }
+                    try? FileManager.default.removeItem(at: tempURL)
+                    DispatchQueue.main.async {
+                        self.loadRecentRecordings()
+                    }
+                }
+            }
             
             // Show custom crop area window overlay again after recording completes
             if self.screenRecordCaptureMode == "selected" {

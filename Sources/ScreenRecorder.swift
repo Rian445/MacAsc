@@ -138,7 +138,7 @@ class ScreenRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             self.session.startRunning()
             
-            // Apply hardware-accelerated HEVC (H.265) output compression settings for up to 50% smaller sizes at same quality
+            // Apply hardware-accelerated HEVC (H.265) output compression settings for up to 50% smaller sizes
             if let connection = self.movieOutput.connection(with: .video) {
                 var settings: [String: Any] = [
                     AVVideoCodecKey: AVVideoCodecType.hevc
@@ -146,7 +146,6 @@ class ScreenRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
                 
                 var compressionProperties: [String: Any] = [:]
                 // Target bitrates optimized for highly efficient HEVC compression
-                // Low = 600 Kbps, Medium = 1.4 Mbps, High = 3.0 Mbps
                 var averageBitrate: Int = 1_400_000 // default 1.4 Mbps
                 if quality == "low" {
                     averageBitrate = 600_000
@@ -157,7 +156,7 @@ class ScreenRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
                 }
                 
                 compressionProperties[AVVideoAverageBitRateKey] = averageBitrate
-                compressionProperties[AVVideoMaxKeyFrameIntervalKey] = 120 // 2s at 60fps, increases compression efficiency
+                compressionProperties[AVVideoMaxKeyFrameIntervalKey] = 120 // GOP sizing
                 settings[AVVideoCompressionPropertiesKey] = compressionProperties
                 
                 self.movieOutput.setOutputSettings(settings, for: connection)
@@ -196,8 +195,11 @@ class ScreenRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
     
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         DispatchQueue.main.async {
-            // Check if recording succeeded despite minor stop errors
-            if let err = error as NSError?, err.code == NSURLErrorUnknown {
+            let nsErr = error as NSError?
+            let isSuccessful = error == nil || 
+                               nsErr?.code == 11807 || 
+                               nsErr?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+            if isSuccessful {
                 self.onCompletion?(outputFileURL, nil)
             } else {
                 self.onCompletion?(outputFileURL, error)
