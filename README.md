@@ -57,23 +57,33 @@ Mac ASC combines system storage management, custom shell automation, instant not
 - **Interactive Terminal Handoff**: Resume active chat threads directly in Terminal with `cd` workspace navigation.
 - 📖 *Want to learn more? Read the complete [AI Assistant User Manual](docs/AI_ASSISTANT.md) and technical [AI Architecture Guide](AI_ARCHITECTURE.md).*
 
-### 🎥 5. Native Screen Recorder & H.265 Compression Engine
-- **Hardware-Accelerated HEVC (H.265) Capture**: Native screen capture powered by AVFoundation utilizing macOS dedicated hardware encoders for up to 50% smaller sizes at pristine visual quality.
+### 🎥 5. Native Screen Recorder & H.265 MOV Compression Engine
+- **Hardware-Accelerated HEVC (H.265) .mov Output**: Native screen capture powered by AVFoundation utilizing macOS dedicated hardware encoders for up to 50% smaller sizes at pristine visual quality saved in standard QuickTime `.mov` format for instant WhatsApp and web sharing compatibility.
 - **Interactive Crop Area Selector**: Choose capture mode (*Window* or *Full Screen*) to bring up an interactive, resizable neon-bordered crop selection overlay. Drag and resize to capture exactly what you need.
 - **Fine-Tuned Configuration**: Select resolution (Native, 1080p, 720p), frame rates (30 FPS or 60 FPS), microphone toggle, and video quality bitrates (Low, Medium, High, Ultra up to 12 Mbps).
+- **Custom Active Menu Bar Animations**: Choose your active recording menu bar animation (**Phoenix**, **Record**, or **Fire**) in Settings with native template white and color modes.
 - **Pause/Resume & Auto-Hide Control**: Pause and resume recordings on-the-fly. The dropdown window auto-collapses during capture to stay out of your video frame and restores when paused or stopped.
-- **Recent Recordings & Quick Actions**: Lists recent clips inside the scrollable section, allowing you to play instantly in QuickTime or reveal in Finder.
+- **Recent Recordings & Quick Actions**: Lists recent `.mov` and `.mp4` clips inside the scrollable section, allowing you to play instantly in QuickTime or reveal in Finder.
 - 📖 *Want to learn more? Read the complete [Screen Recorder User Manual](docs/SCREEN_RECORDER.md).*
 
-### ⌨️ 6. Customizable Tab Keyboard Shortcuts
-- **Instant Tab Switching**: Switch between tabs (`⌘1` Disk Insight, `⌘2` Commands, `⌘3` Quick Notes, `⌘4` Chat with AI, `⌘5` Screen Recorder) when the Mac ASC panel is open.
+### ⏳ 6. Time Tracker & Event Countdowns
+- **Future Countdowns & Past Milestones**: Create custom event timers (with title, target date & time picker).
+- **Auto-Phrased Readouts**:
+  - **Future Target**: `[Event Title] coming in X days Y hrs Z mins S secs` with a cyan `COMING IN` badge.
+  - **Past Target**: `[Event Title] passed for X yrs Y days Z mins S secs` with an orange `PASSED FOR` badge.
+- **Seamless Future ➔ Past Transition**: When a countdown passes its target date, it automatically transitions from `coming in` to `passed for` and counts up without stopping or freezing at zero.
+- **0% Idle CPU & RAM Guarantee**: The 1-second UI countdown ticker is strictly active **only** while the dropdown window is open and the Time Tracker tab is selected. Closing the window or switching tabs instantly destroys the timer.
+
+### ⌨️ 7. Customizable Tab Keyboard Shortcuts & Fixed Cmd+,
+- **Instant Tab Switching**: Switch between tabs (`⌘1` Disk Insight, `⌘2` Commands, `⌘3` Quick Notes, `⌘4` Chat with AI, `⌘5` Screen Recorder, `⌘6` Time Tracker) when the Mac ASC panel is open.
+- **Fixed Standard macOS Settings Shortcut (`⌘,`)**: Pressing `Command + Comma` (`⌘,`) anywhere in the app instantly toggles the Settings panel. Pressing any tab shortcut (`⌘1..6`) while in Settings automatically dismisses Settings and navigates to your requested tab.
 - **Interactive Key Recorder**: Reassign shortcuts for any tab in Settings using a live key recorder badge.
 - **Local Window Security**: Key monitoring runs strictly while the window is active, guaranteeing zero keylogging or collisions when closed.
 - 📖 *Want to learn more? Read the complete [Keyboard Shortcuts User Manual](docs/KEYBOARD_SHORTCUTS.md) and [Privacy Policy](PRIVACY.md).*
 
-### ⚙️ 7. Settings, Tab Tweaks & Backup System
+### ⚙️ 8. Settings, Tab Tweaks & Backup System
 - **Dashboard Tweaks**: Reorder tabs and toggle components on or off.
-- **JSON Backup & Restore**: Export all notes, commands, sorting structures, and AI preferences to a single JSON backup file.
+- **JSON Backup & Restore**: Export all notes, commands, sorting structures, time events (`SavedTimeEvents`), and AI preferences to a single JSON backup file.
 - 📖 *Want to learn more? Read the complete [Settings & Backup User Manual](docs/SETTINGS_AND_BACKUP.md).*
 
 ---
@@ -89,7 +99,8 @@ For complete step-by-step instructions, examples, and technical specifications, 
 | 📝 **Quick Notes** | Viewport virtualization, read-only mode & folder drag-and-drop sorting | [Read Manual](docs/QUICK_NOTES.md) |
 | 🤖 **AI Assistant** | CLI models (`opencode`/`codex`/`agy`), workspace attachments & Terminal handoff | [Read Manual](docs/AI_ASSISTANT.md) |
 | 🎥 **Screen Recorder** | Configurable screen recording (resolution, mic audio, save path, window capture) | [Read Manual](docs/SCREEN_RECORDER.md) |
-| ⌨️ **Keyboard Shortcuts** | Configurable tab hotkeys (`⌘1..5`), live key recorder & local window safety | [Read Manual](docs/KEYBOARD_SHORTCUTS.md) |
+| ⏳ **Time Tracker** | Future countdowns, past milestones, auto-phrased readouts & 0% idle CPU ticker | [Read Manual](docs/TIME_TRACKER.md) |
+| ⌨️ **Keyboard Shortcuts** | Configurable tab hotkeys (`⌘1..6`), `⌘,` Settings shortcut & local window safety | [Read Manual](docs/KEYBOARD_SHORTCUTS.md) |
 | ⚙️ **Settings & Backup** | Tab reordering, component toggles & full JSON settings export/import | [Read Manual](docs/SETTINGS_AND_BACKUP.md) |
 | 🏗️ **AI Architecture** | Multi-agent execution pipeline, session hash persistence & 0 MB idle RAM model | [Read Specs](AI_ARCHITECTURE.md) |
 | 🔒 **Privacy Policy** | Security guarantees, window-scoped key monitoring & ATS network rules | [Read Policy](PRIVACY.md) |
@@ -136,13 +147,17 @@ Mac storage Utility/
 │   ├── CUSTOM_COMMANDS.md           # Shell scripts & silent execution guide
 │   ├── QUICK_NOTES.md               # Quick notes & virtualization guide
 │   ├── AI_ASSISTANT.md              # CLI AI agent panel guide
+│   ├── SCREEN_RECORDER.md           # Native screen recorder guide
+│   ├── TIME_TRACKER.md              # Time tracker & event countdowns guide
 │   ├── KEYBOARD_SHORTCUTS.md        # Tab keyboard shortcuts guide
 │   └── SETTINGS_AND_BACKUP.md       # Settings & JSON backup guide
 ├── Sources/
 │   ├── MacStorageUtilityApp.swift   # Status bar item & NSPanel window lifecycle
-│   ├── StorageViewModel.swift       # State coordinator, commands, notes & AI engine
+│   ├── StorageViewModel.swift       # State coordinator, commands, notes, timers & AI engine
 │   ├── StorageManager.swift         # Async directory size scanner & disk volume reader
 │   ├── DropdownView.swift           # Main SwiftUI view, tab switcher & settings UI
+│   ├── ScreenRecorder.swift         # Hardware-accelerated HEVC MOV capture session
+│   ├── CropSelectionWindow.swift    # Interactive crop area selection window
 │   └── VisualEffectView.swift       # AppKit glassmorphism backdrop view
 ├── Casks/
 │   └── macasc.rb                    # Homebrew Cask formula

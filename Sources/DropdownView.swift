@@ -67,6 +67,14 @@ struct DropdownView: View {
     // Settings Navigation State
     @State private var showSettings = false
     @State private var settingsActiveTab = 0 // 0 = About, 1 = Tweak
+    
+    // Time Tracker State
+    @State private var liveNow: Date = Date()
+    @State private var timeTicker: Timer? = nil
+    @State private var isCreatingTimeEvent: Bool = false
+    @State private var editingTimeEventId: UUID? = nil
+    @State private var timeEventTitleInput: String = ""
+    @State private var timeEventDateInput: Date = Date()
 
     
     var body: some View {
@@ -258,6 +266,16 @@ struct DropdownView: View {
                     .onDisappear {
                         CropSelectionWindow.hide()
                     }
+                } else if tabToRender == 5 {
+                    // Time Tracker & Event Countdowns View
+                    ScrollView(.vertical, showsIndicators: false) {
+                        timeTrackerSection
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
+                    .contentShape(Rectangle())
                 } else {
                     // Fallback empty view if all tabs disabled
                     VStack(spacing: 12) {
@@ -364,17 +382,20 @@ struct DropdownView: View {
         .onDisappear {
             viewModel.stopMonitoringRunningCommands()
             removeKeyboardShortcutMonitor()
+            stopTimeTicker()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
             guard let window = notification.object as? NSWindow, window.className.contains("KeyPanel") else { return }
             viewModel.startMonitoringRunningCommands()
             viewModel.scanAppSelfSizes()
             setupKeyboardShortcutMonitor()
+            startTimeTickerIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
             guard let window = notification.object as? NSWindow, window.className.contains("KeyPanel") else { return }
             viewModel.stopMonitoringRunningCommands()
             removeKeyboardShortcutMonitor()
+            stopTimeTicker()
         }
     }
     
@@ -425,12 +446,23 @@ struct DropdownView: View {
                 let pressedKey = event.charactersIgnoringModifiers?.lowercased() ?? ""
                 let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
                 
+                // Fixed standard macOS shortcut: Cmd + Comma (⌘,) opens/toggles Settings
+                if pressedKey == "," && currentFlags.contains(.command) {
+                    DispatchQueue.main.async {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            showSettings.toggle()
+                        }
+                    }
+                    return nil // Consume event
+                }
+                
                 for (tabId, shortcut) in viewModel.tabShortcuts {
                     let targetFlags = NSEvent.ModifierFlags(rawValue: shortcut.modifiers).intersection(.deviceIndependentFlagsMask)
                     if pressedKey == shortcut.key.lowercased() && currentFlags == targetFlags {
                         if isTabEnabled(tabId) {
                             DispatchQueue.main.async {
                                 withAnimation(.easeInOut(duration: 0.22)) {
+                                    showSettings = false
                                     currentTopTab = tabId
                                     let enabledTabs = self.activeTabs
                                     if let tabIdx = enabledTabs.firstIndex(where: { $0.id == tabId }) {
@@ -532,7 +564,8 @@ struct DropdownView: View {
             1: AppTab(id: 1, title: "Custom Commands", icon: "terminal.fill", accentColor: .blue),
             2: AppTab(id: 2, title: "Quick Note", icon: "note.text", accentColor: .yellow),
             3: AppTab(id: 3, title: "Chat with AI", icon: "cpu.fill", accentColor: .purple),
-            4: AppTab(id: 4, title: "Screen Recorder", icon: "record.circle", accentColor: .red)
+            4: AppTab(id: 4, title: "Screen Recorder", icon: "record.circle", accentColor: .red),
+            5: AppTab(id: 5, title: "Time Tracker", icon: "timer", accentColor: .orange)
         ]
         
         var result: [AppTab] = []
@@ -543,6 +576,7 @@ struct DropdownView: View {
             else if id == 2 && viewModel.enableQuickNotes { result.append(tab) }
             else if id == 3 && viewModel.enableAiChat { result.append(tab) }
             else if id == 4 && viewModel.enableScreenRecorder { result.append(tab) }
+            else if id == 5 && viewModel.enableTimeTracker { result.append(tab) }
         }
         return result
     }
@@ -918,6 +952,305 @@ struct DropdownView: View {
         }
     }
     
+    // MARK: - Time Tracker & Event Countdowns Module
+    
+    private func startTimeTickerIfNeeded() {
+        guard safeTopTab == 5 && !showSettings else {
+            stopTimeTicker()
+            return
+        }
+        if timeTicker == nil {
+            liveNow = Date()
+            timeTicker = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                DispatchQueue.main.async {
+                    self.liveNow = Date()
+                }
+            }
+        }
+    }
+    
+    private func stopTimeTicker() {
+        timeTicker?.invalidate()
+        timeTicker = nil
+    }
+    
+    private func formatTimeEventDiff(title: String, targetDate: Date, now: Date) -> (isFuture: Bool, badgeText: String, headlineText: String, timerText: String) {
+        let calendar = Calendar.current
+        if targetDate > now {
+            // Future Countdown
+            let components = calendar.dateComponents([.day, .hour, .minute, .second], from: now, to: targetDate)
+            let days = components.day ?? 0
+            let hours = components.hour ?? 0
+            let minutes = components.minute ?? 0
+            let seconds = components.second ?? 0
+            
+            var timeStr = ""
+            if days > 0 {
+                timeStr = "\(days)d \(hours)h \(minutes)m \(seconds)s"
+            } else if hours > 0 {
+                timeStr = "\(hours)h \(minutes)m \(seconds)s"
+            } else if minutes > 0 {
+                timeStr = "\(minutes)m \(seconds)s"
+            } else {
+                timeStr = "\(seconds)s"
+            }
+            
+            let headline = "\(title) coming in"
+            return (true, "COMING IN", headline, timeStr)
+        } else {
+            // Past Elapsed (also applies seamlessly when a future date is reached!)
+            let components = calendar.dateComponents([.year, .day, .hour, .minute, .second], from: targetDate, to: now)
+            let years = components.year ?? 0
+            let days = components.day ?? 0
+            let hours = components.hour ?? 0
+            let minutes = components.minute ?? 0
+            let seconds = components.second ?? 0
+            
+            var timeStr = ""
+            if years > 0 {
+                timeStr = "\(years)y \(days)d \(hours)h \(minutes)m \(seconds)s"
+            } else if days > 0 {
+                timeStr = "\(days)d \(hours)h \(minutes)m \(seconds)s"
+            } else if hours > 0 {
+                timeStr = "\(hours)h \(minutes)m \(seconds)s"
+            } else if minutes > 0 {
+                timeStr = "\(minutes)m \(seconds)s"
+            } else {
+                timeStr = "\(seconds)s"
+            }
+            
+            let headline = "\(title) passed for"
+            return (false, "PASSED FOR", headline, timeStr)
+        }
+    }
+    
+    private var timeTrackerSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header / New Event Button
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TIME TRACKER & COUNTDOWNS")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+                    
+                    Text("\(viewModel.timeEvents.count) Tracked Events")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    timeEventTitleInput = ""
+                    timeEventDateInput = Date().addingTimeInterval(86400) // Default tomorrow
+                    editingTimeEventId = nil
+                    withAnimation(.spring(response: 0.35)) {
+                        isCreatingTimeEvent.toggle()
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: isCreatingTimeEvent ? "xmark.circle.fill" : "plus.circle.fill")
+                        Text(isCreatingTimeEvent ? "Cancel" : "New Event")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.2))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.orange.opacity(0.4), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Create / Edit Form Card
+            if isCreatingTimeEvent || editingTimeEventId != nil {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(editingTimeEventId != nil ? "EDIT EVENT TIMER" : "CREATE NEW TIME TARGET")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.orange)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("EVENT TITLE")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        
+                        TextField("e.g. New Year 2027, Product Launch, Birthday", text: $timeEventTitleInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12))
+                            .padding(8)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("TARGET DATE & TIME (FUTURE OR PAST)")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        
+                        DatePicker(
+                            "",
+                            selection: $timeEventDateInput,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.field)
+                        .labelsHidden()
+                        .padding(4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                    }
+                    
+                    HStack {
+                        Spacer()
+                        
+                        Button("Cancel") {
+                            withAnimation(.spring(response: 0.35)) {
+                                isCreatingTimeEvent = false
+                                editingTimeEventId = nil
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        
+                        Button(action: {
+                            if let editId = editingTimeEventId {
+                                viewModel.updateTimeEvent(id: editId, title: timeEventTitleInput, targetDate: timeEventDateInput)
+                            } else {
+                                viewModel.addTimeEvent(title: timeEventTitleInput, targetDate: timeEventDateInput)
+                            }
+                            withAnimation(.spring(response: 0.35)) {
+                                isCreatingTimeEvent = false
+                                editingTimeEventId = nil
+                            }
+                        }) {
+                            Text(editingTimeEventId != nil ? "Save Changes" : "Create Timer")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.orange)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+            }
+            
+            // Events List
+            if viewModel.timeEvents.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "timer")
+                        .font(.system(size: 28))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("No Timers Added Yet")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text("Click '+ New Event' to track countdowns or past milestones.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 30)
+                .background(Color.white.opacity(0.02))
+                .cornerRadius(8)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(viewModel.timeEvents) { event in
+                        let diff = formatTimeEventDiff(title: event.title, targetDate: event.targetDate, now: liveNow)
+                        
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Text(diff.badgeText)
+                                        .font(.system(size: 7, weight: .bold))
+                                        .foregroundColor(diff.isFuture ? .cyan : .orange)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background((diff.isFuture ? Color.cyan : Color.orange).opacity(0.18))
+                                        .cornerRadius(4)
+                                    
+                                    Text(diff.headlineText)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                }
+                                
+                                Text(diff.timerText)
+                                    .font(.system(size: 15, weight: .heavy, design: .monospaced))
+                                    .foregroundColor(diff.isFuture ? .cyan : .orange)
+                                
+                                Text("Target: \(event.targetDate.formatted(date: .numeric, time: .shortened))")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                            }
+                            
+                            Spacer()
+                            
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    editingTimeEventId = event.id
+                                    timeEventTitleInput = event.title
+                                    timeEventDateInput = event.targetDate
+                                    isCreatingTimeEvent = false
+                                }) {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Edit Event")
+                                
+                                Button(action: {
+                                    viewModel.deleteTimeEvent(id: event.id)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.red.opacity(0.8))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Delete Event")
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.04))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                    }
+                }
+            }
+        }
+        .onAppear {
+            startTimeTickerIfNeeded()
+        }
+        .onDisappear {
+            stopTimeTicker()
+        }
+        .onChange(of: safeTopTab) { _ in
+            startTimeTickerIfNeeded()
+        }
+        .onChange(of: showSettings) { _ in
+            startTimeTickerIfNeeded()
+        }
+    }
+    
     private func tweakToggleRow(title: String, icon: String, color: Color, isOn: Binding<Bool>) -> some View {
         HStack {
             Image(systemName: icon)
@@ -946,6 +1279,7 @@ struct DropdownView: View {
         case 2: return ("Quick Note", "note.text", .yellow)
         case 3: return ("Chat with AI", "cpu.fill", .purple)
         case 4: return ("Screen Recorder", "record.circle", .red)
+        case 5: return ("Time Tracker", "timer", .orange)
         default: return ("Tab", "square.fill", .white)
         }
     }
@@ -957,6 +1291,7 @@ struct DropdownView: View {
         case 2: return viewModel.enableQuickNotes
         case 3: return viewModel.enableAiChat
         case 4: return viewModel.enableScreenRecorder
+        case 5: return viewModel.enableTimeTracker
         default: return false
         }
     }
@@ -973,6 +1308,8 @@ struct DropdownView: View {
             return Binding(get: { viewModel.enableAiChat }, set: { viewModel.setTweak("TweakChatWithAi", value: $0) })
         case 4:
             return Binding(get: { viewModel.enableScreenRecorder }, set: { viewModel.setTweak("TweakScreenRecorder", value: $0) })
+        case 5:
+            return Binding(get: { viewModel.enableTimeTracker }, set: { viewModel.setTweak("TweakTimeTracker", value: $0) })
         default:
             return .constant(true)
         }
@@ -1190,7 +1527,7 @@ struct DropdownView: View {
                                 .padding(.bottom, 2)
                             
                             VStack(spacing: 6) {
-                                ForEach([0, 1, 2, 3, 4], id: \.self) { tabId in
+                                ForEach([0, 1, 2, 3, 4, 5], id: \.self) { tabId in
                                     let tabInfo = tabInfoForId(tabId)
                                     let isEnabled = isTabEnabled(tabId)
                                     let shortcut = viewModel.tabShortcuts[tabId]

@@ -1,6 +1,6 @@
 # Privacy Policy for Mac ASC
 
-Last Updated: August 5, 2026
+Last Updated: August 22, 2026
 
 **Mac ASC** is designed with privacy and data security as core principles. The application operates as a native, lightweight macOS utility. We do not collect, store, transmit, or share any of your personal data, files, prompts, screen recordings, voice recordings, or usage analytics.
 
@@ -9,32 +9,39 @@ Last Updated: August 5, 2026
 ## 🔒 1. 100% Private Native Application
 The Mac ASC native application binary (`Mac ASC.app`) contains zero telemetry, zero tracking code, zero analytics SDKs, and zero crash reporting libraries:
 * **Storage Breakdown Analysis**: Directory size calculations are handled strictly on your local machine using native macOS system calls (`FileManager`).
-* **Pinned Folders, Notes & Nested Folders**: Pinned directory paths, quick notes, nested subfolder trees, custom command shortcuts, and tab sorting preferences are saved locally in standard macOS user preferences (`UserDefaults`) on your own Mac.
-* **Settings Backup**: Exported JSON backup files encode your settings, custom commands, quick notes, pinned paths, and screen recorder settings directly to a local JSON file of your choosing. No third-party servers or cloud backup endpoints are involved.
+* **Pinned Folders, Notes, Timers & Settings**: Pinned directory paths, quick notes, time events (`SavedTimeEvents`), nested subfolder trees, custom command shortcuts, and tab sorting preferences are saved locally in standard macOS user preferences (`UserDefaults`) on your own Mac.
+* **Settings Backup**: Exported JSON backup files encode your settings, custom commands, quick notes, time events, pinned paths, and screen recorder settings directly to a local JSON file of your choosing. No third-party servers or cloud backup endpoints are involved.
 
 ---
 
 ## 🎥 2. Local Screen Recorder & Audio Capture
 The Screen Recorder module operates 100% locally with zero external network connectivity or cloud storage reliance:
-* **100% Local File Output**: Captured video (`.mp4`) and voice audio are written directly to your designated folder (e.g., `~/Desktop` or a custom chosen path) using macOS system APIs.
-* **Microphone Access**: Microphone audio is captured strictly for live commentary recording and is mixed directly into the final `.mp4` file in real-time. No raw audio data is stored, cached, or transmitted externally.
+* **100% Local File Output**: Captured video (`.mov`) and voice audio are written directly to your designated folder (e.g., `~/Desktop` or a custom chosen path) using macOS system APIs in standard QuickTime `.mov` format.
+* **Microphone Access**: Microphone audio is captured strictly for live commentary recording and is mixed directly into the final video file in real-time. No raw audio data is stored, cached, or transmitted externally.
 * **Hardware-Accelerated HEVC (H.265) Compression**: Video and audio compression runs locally using macOS **AVFoundation** and native Apple hardware encoders (AVE) to optimize bitrates. No cloud processing or external servers are involved.
 * **Transient Temp Data**: Any temporary files used by the OS during active encoding are automatically deleted and cleared by macOS when the recording completes or stops.
 * **Explicit Permission Model**: Screen Capture and Microphone access require explicit permission authorizations from you through macOS System Prompts (`NSScreenCaptureUsageDescription` and `NSMicrophoneUsageDescription`).
 
 ---
 
-## ⚡ 3. Custom Shell Commands & Background Process Isolation
+## ⏳ 3. Time Tracker & Event Countdowns Privacy
+* **100% Local Mathematical Calculations**: Countdown and elapsed time calculations (`formatTimeEventDiff`) run mathematically on-the-fly directly on your Mac using the native `Calendar` system.
+* **Zero Idle CPU & RAM Footprint**: The 1-second UI countdown timer is strictly active **only** while the dropdown window is open and the Time Tracker tab is selected. When the app window is closed or on another tab, the timer is destroyed, using 0% CPU and 0 MB RAM.
+* **Local Storage & Backups**: Event titles and target dates are stored locally in `UserDefaults` (`SavedTimeEvents`) and encoded in your local JSON settings backups.
+
+---
+
+## ⚡ 4. Custom Shell Commands & Background Process Isolation
 * **Local Execution Only**: Custom commands run strictly on your local Mac.
 * **Terminal Mode vs Silent Background Mode**: Commands configured for standard execution open in macOS Terminal (`Terminal.app`), while commands set to *Run in Silent Mode* execute headlessly via native Swift background process wrappers (`Process()`).
 * **Process Isolation & Safety**: Background commands run under your own local user permissions (`/bin/bash`). Mac ASC includes process boundary safety checks (`pid != myPid`) so process termination logic (`stopCustomCommand`) can only target processes explicitly spawned by your custom scripts.
 
 ---
 
-## ⌨️ 4. Window-Scoped Keyboard Shortcuts & Privacy
-* **Local Window Scope Only**: Tab keyboard shortcuts (`⌘1..5` or custom reassignments) use native AppKit local monitors (`NSEvent.addLocalMonitorForEvents`). Key presses are intercepted **strictly when the Mac ASC window is active and open**.
+## ⌨️ 5. Window-Scoped Keyboard Shortcuts & Privacy
+* **Local Window Scope Only**: Tab keyboard shortcuts (`⌘1..6` or custom reassignments) and fixed Settings shortcut (`⌘,`) use native AppKit local monitors (`NSEvent.addLocalMonitorForEvents`). Key presses are intercepted **strictly when the Mac ASC window is active and open**.
 * **Zero Global Keylogging**: The application cannot observe, capture, or log keystrokes typed in other applications, browsers, or password fields when Mac ASC is closed or unfocused.
-* **No Accessibility Permissions Needed**: Because event monitoring is strictly scoped to Mac ASC's own window, no system-level macOS Accessibility or Keylogger permissions are requested or required.
+* **No Accessibility Permissions Needed**: Because event monitoring is strictly scoped to Mac ASC's own window, no system-level macOS Accessibility or Keylogger permissions are requested or required.d or required.
 
 ---
 

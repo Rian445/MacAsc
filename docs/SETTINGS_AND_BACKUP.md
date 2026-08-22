@@ -15,7 +15,7 @@ Welcome to the **Settings & Backup System** user guide for Mac ASC. This module 
 ## 🔍 Key Capabilities
 
 1. **Dashboard Tweaks & Component Visibility**:
-   - Enable or disable dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*) using simple toggle switches.
+   - Enable or disable dashboard components (*Disk Insight*, *Custom Commands*, *Quick Note*, *Chat with AI*, *Screen Recorder*, *Time Tracker*) using simple toggle switches.
    - Hidden components are immediately removed from the top navigation bar to declutter your interface.
 
 2. **Manual Tab Reordering**:
@@ -23,7 +23,7 @@ Welcome to the **Settings & Backup System** user guide for Mac ASC. This module 
    - Custom tab display order is saved automatically to user preferences.
 
 3. **Complete JSON Backup & Restore**:
-   - Export all custom commands, quick notes, subfolder trees, tab sorting order, folder sort orders, pinned directories, tweak switches, shortcut mappings, and AI chat threads to a single `.json` backup file.
+   - Export all custom commands, quick notes, time tracker countdown events (`SavedTimeEvents`), subfolder trees, tab sorting order, folder sort orders, pinned directories, tweak switches, shortcut mappings (`⌘1..6`), menu bar logo preferences, and AI chat threads to a single `.json` backup file.
    - Upload/import backup files to restore your entire workspace setup on a new Mac in seconds.
 
 <p align="center">

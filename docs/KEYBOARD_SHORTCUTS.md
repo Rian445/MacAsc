@@ -19,6 +19,9 @@ Welcome to the **Tab Shortcuts & Gestures** user guide for Mac ASC. This module 
    - `⌘2`: Switches to **Custom Commands**
    - `⌘3`: Switches to **Quick Notes**
    - `⌘4`: Switches to **Chat with AI**
+   - `⌘5`: Switches to **Screen Recorder**
+   - `⌘6`: Switches to **Time Tracker**
+   - `⌘,` (Command + Comma): Fixed standard macOS shortcut that opens/toggles **Settings** from any tab (and pressing `⌘1..6` while in Settings automatically dismisses Settings and navigates to the target tab).
 
 2. **🛝 Two-Finger Swipe Gesture Navigation**:
    - Swipe horizontally with two fingers on your trackpad to cycle through navigation tabs.
@@ -26,7 +29,7 @@ Welcome to the **Tab Shortcuts & Gestures** user guide for Mac ASC. This module 
    - **Skip Prevention**: Built-in gesture cooldowns ensure a single swipe advances exactly one tab at a time.
 
 3. **Interactive Key Recorder**:
-   - Easily reassign any tab to custom key combinations (e.g. `⌥1..4`, `⌃D`, `Ctrl+N`) in Settings.
+   - Easily reassign any tab to custom key combinations (e.g. `⌥1..6`, `⌃D`, `Ctrl+N`) in Settings.
 
 4. **Window-Scoped Safety (Zero Telemetry)**:
    - Event monitoring runs **strictly while the Mac ASC window is open**.
@@ -41,12 +44,12 @@ Welcome to the **Tab Shortcuts & Gestures** user guide for Mac ASC. This module 
 ## 🛠️ Step-by-Step Usage & Examples
 
 ### Example 1: Reassigning a Shortcut in Settings
-1. Open Mac ASC -> click the **Settings Gear Icon** (`⚙️`) in the header.
+1. Open Mac ASC -> click the **Settings Gear Icon** (`⚙️`) in the header (or press `⌘,`).
 2. Scroll to the **TAB KEYBOARD SHORTCUTS** section.
-3. Click the shortcut badge for **Quick Notes** (`[ ⌘3 ]`).
+3. Click the shortcut badge for **Time Tracker** (`[ ⌘6 ]`).
 4. The badge will change to **"Press Key..."** (`⌨️`).
-5. Press your desired key combination (e.g., press `Option + N` -> `⌥N`).
-6. The badge instantly updates to `⌥N` and saves to your preferences!
+5. Press your desired key combination (e.g., press `Option + T` -> `⌥T`).
+6. The badge instantly updates to `⌥T` and saves to your preferences!
 
 ### Example 2: Swiping to Switch Tabs
 1. Open the Mac ASC dropdown from your menu bar.
@@ -61,5 +64,5 @@ Welcome to the **Tab Shortcuts & Gestures** user guide for Mac ASC. This module 
 ---
 
 ## 💡 System Protection & Reset
-- Click **Reset Shortcuts** in Settings anytime to restore default `⌘1`, `⌘2`, `⌘3`, `⌘4`.
+- Click **Reset Shortcuts** in Settings anytime to restore default `⌘1`, `⌘2`, `⌘3`, `⌘4`, `⌘5`, `⌘6`.
 - No global keylogger or accessibility permissions are requested or required.

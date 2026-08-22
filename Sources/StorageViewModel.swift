@@ -36,7 +36,9 @@ class StorageViewModel: ObservableObject {
     @Published var enableQuickNotes = true
     @Published var enableAiChat = true
     @Published var enableScreenRecorder = true
-    @Published var tabOrder: [Int] = [0, 1, 2, 3, 4]
+    @Published var enableTimeTracker = true
+    @Published var tabOrder: [Int] = [0, 1, 2, 3, 4, 5]
+    @Published var timeEvents: [TimeEvent] = []
     @Published var tabShortcuts: [Int: TabShortcut] = [:]
     @Published var customCommandFolderOrder: [String] = []
     @Published var quickNoteFolderOrder: [String] = []
@@ -109,18 +111,19 @@ class StorageViewModel: ObservableObject {
         self.enableQuickNotes = UserDefaults.standard.object(forKey: "TweakQuickNote") as? Bool ?? true
         self.enableAiChat = UserDefaults.standard.object(forKey: "TweakChatWithAi") as? Bool ?? true
         self.enableScreenRecorder = UserDefaults.standard.object(forKey: "TweakScreenRecorder") as? Bool ?? true
+        self.enableTimeTracker = UserDefaults.standard.object(forKey: "TweakTimeTracker") as? Bool ?? true
         
         self.customCommandFolderOrder = UserDefaults.standard.stringArray(forKey: "CustomCommandFolderOrder") ?? []
         self.quickNoteFolderOrder = UserDefaults.standard.stringArray(forKey: "QuickNoteFolderOrder") ?? []
         
         if let savedOrder = UserDefaults.standard.array(forKey: "DashboardTabOrder") as? [Int], !savedOrder.isEmpty {
-            var order = savedOrder.filter { [0, 1, 2, 3, 4].contains($0) }
-            for id in [0, 1, 2, 3, 4] {
+            var order = savedOrder.filter { [0, 1, 2, 3, 4, 5].contains($0) }
+            for id in [0, 1, 2, 3, 4, 5] {
                 if !order.contains(id) { order.append(id) }
             }
             self.tabOrder = order
         } else {
-            self.tabOrder = [0, 1, 2, 3, 4]
+            self.tabOrder = [0, 1, 2, 3, 4, 5]
         }
         
         self.selectedLogo = UserDefaults.standard.string(forKey: "SelectedLogo") ?? "walter"
@@ -129,6 +132,7 @@ class StorageViewModel: ObservableObject {
         
         loadTabShortcuts()
         loadScreenRecorderPreferences()
+        loadTimeEvents()
     }
     
     // MARK: - Folder Tree & Reordering Helpers
@@ -472,9 +476,9 @@ class StorageViewModel: ObservableObject {
         saveTabOrder()
     }
     
-    /// Resets tab display order to default [0, 1, 2, 3, 4]
+    /// Resets tab display order to default [0, 1, 2, 3, 4, 5]
     func resetTabOrder() {
-        tabOrder = [0, 1, 2, 3, 4]
+        tabOrder = [0, 1, 2, 3, 4, 5]
         saveTabOrder()
     }
     
@@ -494,10 +498,14 @@ class StorageViewModel: ObservableObject {
             for (k, v) in saved {
                 if let id = Int(k) { map[id] = v }
             }
-            // Self-healing default shortcut injection for Screen Recorder tab
+            // Self-healing default shortcut injection for Screen Recorder and Time Tracker tabs
             if map[4] == nil {
                 let cmdModifier = NSEvent.ModifierFlags.command.rawValue
                 map[4] = TabShortcut(key: "5", modifiers: cmdModifier)
+            }
+            if map[5] == nil {
+                let cmdModifier = NSEvent.ModifierFlags.command.rawValue
+                map[5] = TabShortcut(key: "6", modifiers: cmdModifier)
             }
             self.tabShortcuts = map
         } else {
@@ -505,7 +513,7 @@ class StorageViewModel: ObservableObject {
         }
     }
     
-    /// Resets tab shortcuts to default (Cmd+1 for Disk, Cmd+2 for Commands, Cmd+3 for Notes, Cmd+4 for AI, Cmd+5 for Recorder)
+    /// Resets tab shortcuts to default (Cmd+1 for Disk, Cmd+2 for Commands, Cmd+3 for Notes, Cmd+4 for AI, Cmd+5 for Recorder, Cmd+6 for Time Tracker)
     func resetTabShortcutsToDefault() {
         let cmdModifier = NSEvent.ModifierFlags.command.rawValue
         self.tabShortcuts = [
@@ -513,7 +521,8 @@ class StorageViewModel: ObservableObject {
             1: TabShortcut(key: "2", modifiers: cmdModifier),
             2: TabShortcut(key: "3", modifiers: cmdModifier),
             3: TabShortcut(key: "4", modifiers: cmdModifier),
-            4: TabShortcut(key: "5", modifiers: cmdModifier)
+            4: TabShortcut(key: "5", modifiers: cmdModifier),
+            5: TabShortcut(key: "6", modifiers: cmdModifier)
         ]
         saveTabShortcuts()
     }
@@ -2377,7 +2386,9 @@ class StorageViewModel: ObservableObject {
         "ScreenRecordFps",
         "ScreenRecordQuality",
         "SelectedLogo",
-        "SelectedRecordLogo"
+        "SelectedRecordLogo",
+        "SavedTimeEvents",
+        "TweakTimeTracker"
     ]
     
     /// Exports all user settings, tab sorting order, folder sorting orders, pinned folders, commands, notes, tweaks, and AI history to a JSON file
@@ -2602,6 +2613,54 @@ class StorageViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Time Tracker & Event Countdowns Helpers
+    
+    func addTimeEvent(title: String, targetDate: Date) {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalTitle = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
+        let newEvent = TimeEvent(id: UUID(), title: finalTitle, targetDate: targetDate, createdAt: Date())
+        timeEvents.append(newEvent)
+        saveTimeEvents()
+    }
+    
+    func updateTimeEvent(id: UUID, title: String, targetDate: Date) {
+        if let index = timeEvents.firstIndex(where: { $0.id == id }) {
+            let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            timeEvents[index].title = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
+            timeEvents[index].targetDate = targetDate
+            saveTimeEvents()
+        }
+    }
+    
+    func deleteTimeEvent(id: UUID) {
+        timeEvents.removeAll(where: { $0.id == id })
+        saveTimeEvents()
+    }
+    
+    func saveTimeEvents() {
+        if let encoded = try? JSONEncoder().encode(timeEvents) {
+            UserDefaults.standard.set(encoded, forKey: "SavedTimeEvents")
+        }
+        self.objectWillChange.send()
+    }
+    
+    func loadTimeEvents() {
+        if let data = UserDefaults.standard.data(forKey: "SavedTimeEvents"),
+           let decoded = try? JSONDecoder().decode([TimeEvent].self, from: data) {
+            self.timeEvents = decoded
+        } else {
+            // Default initial example events if none exist
+            let calendar = Calendar.current
+            let futureDate = calendar.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+            let pastDate = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+            self.timeEvents = [
+                TimeEvent(id: UUID(), title: "Project Milestone", targetDate: futureDate, createdAt: Date()),
+                TimeEvent(id: UUID(), title: "Mac ASC Release", targetDate: pastDate, createdAt: Date())
+            ]
+            saveTimeEvents()
+        }
+    }
+    
     func startScreenRecording() {
         guard !isRecording else { return }
         
@@ -2799,4 +2858,11 @@ struct ChatThread: Identifiable, Codable, Equatable {
         }
         return []
     }
+}
+
+struct TimeEvent: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var targetDate: Date
+    var createdAt: Date = Date()
 }

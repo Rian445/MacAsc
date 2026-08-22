@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.2.0] - 2026-08-22
+
+### ✨ Added
+- **Time Tracker & Event Countdowns Module (Tab 5)**: Complete event countdown & count-up tracking tab with title, date & time picker, and full CRUD operations.
+- **Dynamic Auto-Phrased Timer Readouts**:
+  - Future targets: Displays `[Event Title] coming in X days Y hrs Z mins S secs` with a cyan `COMING IN` badge.
+  - Past targets: Displays `[Event Title] passed for X yrs Y days Z mins S secs` with an orange `PASSED FOR` badge.
+- **Seamless Future ➔ Past Transition**: Automatically transitions from `coming in` to `passed for` and counts up without stopping or freezing when target dates pass.
+- **0% Idle CPU & RAM Guarantee**: Live UI ticker runs strictly while the window is open and Tab 5 is selected. Instantly invalidated on window close or tab switch.
+- **Native Screen Recorder & H.265 .mov Compression**: Captures video in hardware-accelerated HEVC (H.265) saved directly into standard QuickTime `.mov` files for instant WhatsApp, Slack, and web sharing compatibility.
+- **Custom Active Menu Bar Animations**: Choose between **Phoenix**, **Record**, and **Fire** animated menu bar icons with native template white and color modes.
+- **Fixed Standard macOS Settings Shortcut (`⌘,`)**: Pressing `Command + Comma` (`⌘,`) anywhere in the app toggles the Settings panel. Pressing any tab shortcut (`⌘1..6`) while in Settings automatically dismisses Settings and navigates to the requested tab.
+- **Dedicated Time Tracker Shortcut (`⌘6`)**: Added `⌘6` default keyboard shortcut mapping for Tab 5, fully integrated into the Settings key binder.
+- **Full Settings Backup Integration**: Includes `SavedTimeEvents`, `TweakTimeTracker`, and `TabKeyboardShortcuts` in JSON export and import.
+
+### 🧹 Refactored & Improved
+- **Window-Bound Timer Management**: Wrapped popover transitions to instantly kill command scanning timers on window resignation, guaranteeing 0% background idle CPU usage.
+- **Redundant Stop Item Cleanup**: Removed secondary menu bar stop button, unifying status indication directly into the main status bar animated icon.
+
+---
+
 ## [1.1.0] - 2026-07-31
 
 ### ✨ Added
