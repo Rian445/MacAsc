@@ -71,10 +71,18 @@ struct DropdownView: View {
     // Time Tracker State
     @State private var liveNow: Date = Date()
     @State private var timeTicker: Timer? = nil
+    @State private var timeTrackerCategoryTab: String = "General" // "General", "Closing Date", "Passed", "Closed"
+    @State private var collapsedTimeFolders: Set<String> = []
+    @State private var isTimeTrackerEditMode: Bool = false
     @State private var isCreatingTimeEvent: Bool = false
     @State private var editingTimeEventId: UUID? = nil
     @State private var timeEventTitleInput: String = ""
+    @State private var timeEventFolderInput: String = ""
     @State private var timeEventDateInput: Date = Date()
+    @State private var timeEventTimerTypeInput: TimerType = .unlimited
+    @State private var timeEventFrequencyInput: RestartFrequency = .daily
+    @State private var isAddingTimeFolder: Bool = false
+    @State private var newTimeFolderNameInput: String = ""
 
     
     var body: some View {
@@ -961,9 +969,12 @@ struct DropdownView: View {
         }
         if timeTicker == nil {
             liveNow = Date()
-            timeTicker = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                DispatchQueue.main.async {
+            viewModel.checkAndProcessRestartTimers(now: liveNow)
+            timeTicker = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak viewModel] _ in
+                DispatchQueue.main.async { [weak viewModel] in
+                    guard let viewModel = viewModel else { return }
                     self.liveNow = Date()
+                    viewModel.checkAndProcessRestartTimers(now: self.liveNow)
                 }
             }
         }
@@ -972,6 +983,38 @@ struct DropdownView: View {
     private func stopTimeTicker() {
         timeTicker?.invalidate()
         timeTicker = nil
+    }
+    
+    private var timeEventWeeklyDayBinding: Binding<Int> {
+        Binding(
+            get: {
+                Calendar.current.component(.weekday, from: timeEventDateInput)
+            },
+            set: { newWeekday in
+                let cal = Calendar.current
+                let currentWeekday = cal.component(.weekday, from: timeEventDateInput)
+                let diff = newWeekday - currentWeekday
+                if let updated = cal.date(byAdding: .day, value: diff, to: timeEventDateInput) {
+                    timeEventDateInput = updated
+                }
+            }
+        )
+    }
+
+    private var timeEventMonthlyDayBinding: Binding<Int> {
+        Binding(
+            get: {
+                Calendar.current.component(.day, from: timeEventDateInput)
+            },
+            set: { newDay in
+                let cal = Calendar.current
+                var comps = cal.dateComponents([.year, .month, .hour, .minute, .second], from: timeEventDateInput)
+                comps.day = newDay
+                if let updated = cal.date(from: comps) {
+                    timeEventDateInput = updated
+                }
+            }
+        )
     }
     
     private func formatTimeEventDiff(title: String, targetDate: Date, now: Date) -> (isFuture: Bool, badgeText: String, headlineText: String, timerText: String) {
@@ -1024,16 +1067,151 @@ struct DropdownView: View {
         }
     }
     
+    private var filteredTimeEvents: [TimeEvent] {
+        let now = liveNow
+        switch timeTrackerCategoryTab {
+        case "General":
+            return viewModel.timeEvents.filter { !$0.isClosed }
+        case "Closing Date":
+            let calendar = Calendar.current
+            let threshold = calendar.date(byAdding: .day, value: 3, to: now) ?? now.addingTimeInterval(86400 * 3)
+            return viewModel.timeEvents.filter { event in
+                guard !event.isClosed else { return false }
+                return event.targetDate > now && event.targetDate <= threshold
+            }
+        case "Passed":
+            return viewModel.timeEvents.filter { event in
+                guard !event.isClosed else { return false }
+                return event.targetDate <= now
+            }
+        case "Closed":
+            return viewModel.timeEvents.filter { $0.isClosed }
+        default:
+            return viewModel.timeEvents
+        }
+    }
+    
+    private func renderTimeEventCard(_ event: TimeEvent) -> some View {
+        let diff = formatTimeEventDiff(title: event.title, targetDate: event.targetDate, now: liveNow)
+        
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                // Line 1: Full Event Title (Never cropped!)
+                Text(event.title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(event.isClosed ? .secondary : .white)
+                    .lineLimit(1)
+                
+                // Line 2: Glowing Monospaced Live Ticker
+                Text(event.isClosed ? "Timer Off" : diff.timerText)
+                    .font(.system(size: 16, weight: .heavy, design: .monospaced))
+                    .foregroundColor(event.isClosed ? .secondary : (diff.isFuture ? Color(red: 0.22, green: 0.74, blue: 0.98) : Color(red: 0.98, green: 0.57, blue: 0.24)))
+                
+                // Line 3: Sleek Single-Line Badges & Compact Target Details
+                HStack(spacing: 6) {
+                    Text(event.isClosed ? "CLOSED" : diff.badgeText)
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundColor(event.isClosed ? .gray : (diff.isFuture ? Color(red: 0.22, green: 0.74, blue: 0.98) : Color(red: 0.98, green: 0.57, blue: 0.24)))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background((event.isClosed ? Color.gray : (diff.isFuture ? Color.cyan : Color.orange)).opacity(0.18))
+                        .cornerRadius(4)
+                    
+                    if event.timerType == .restart {
+                        Text("🔄 \(event.restartFrequency.rawValue)")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundColor(.purple)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.18))
+                            .cornerRadius(4)
+                    }
+                    
+                    if timeTrackerCategoryTab != "General" && !event.folder.isEmpty {
+                        Text("📁 \(event.folder)")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(.secondary.opacity(0.85))
+                            .lineLimit(1)
+                    }
+                    
+                    Text("• \(event.targetDate.formatted(date: .numeric, time: .shortened))")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary.opacity(0.85))
+                        .lineLimit(1)
+                    
+                    if event.restartCount > 0 {
+                        Text("• 🔄 \(event.restartCount)x")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundColor(.purple)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.top, 1)
+                .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            if isTimeTrackerEditMode {
+                HStack(spacing: 8) {
+                    // Close / Re-open Toggle Button
+                    Button(action: {
+                        viewModel.toggleTimeEventClosed(id: event.id)
+                    }) {
+                        Image(systemName: event.isClosed ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                            .font(.system(size: 11))
+                            .foregroundColor(event.isClosed ? .green : .orange)
+                    }
+                    .buttonStyle(.plain)
+                    .help(event.isClosed ? "Re-open Timer" : "Close Timer")
+                    
+                    Button(action: {
+                        editingTimeEventId = event.id
+                        timeEventTitleInput = event.title
+                        timeEventFolderInput = event.folder
+                        timeEventDateInput = event.targetDate
+                        timeEventTimerTypeInput = event.timerType
+                        timeEventFrequencyInput = event.restartFrequency
+                        isCreatingTimeEvent = false
+                    }) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit Event")
+                    
+                    Button(action: {
+                        viewModel.deleteTimeEvent(id: event.id)
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 11))
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete Event")
+                }
+            }
+        }
+        .padding(11)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+    
     private var timeTrackerSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             // Header / New Event Button
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TIME TRACKER & COUNTDOWNS")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 8.5, weight: .bold))
                         .foregroundColor(.secondary)
                     
-                    Text("\(viewModel.timeEvents.count) Tracked Events")
+                    Text("\(viewModel.timeEvents.filter { !$0.isClosed }.count) Active Timers")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
                 }
@@ -1042,7 +1220,10 @@ struct DropdownView: View {
                 
                 Button(action: {
                     timeEventTitleInput = ""
-                    timeEventDateInput = Date().addingTimeInterval(86400) // Default tomorrow
+                    timeEventFolderInput = ""
+                    timeEventDateInput = Date().addingTimeInterval(86400)
+                    timeEventTimerTypeInput = .unlimited
+                    timeEventFrequencyInput = .daily
                     editingTimeEventId = nil
                     withAnimation(.spring(response: 0.35)) {
                         isCreatingTimeEvent.toggle()
@@ -1050,61 +1231,337 @@ struct DropdownView: View {
                 }) {
                     HStack(spacing: 5) {
                         Image(systemName: isCreatingTimeEvent ? "xmark.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 11, weight: .bold))
                         Text(isCreatingTimeEvent ? "Cancel" : "New Event")
+                            .font(.system(size: 11, weight: .bold))
                     }
-                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.orange.opacity(0.2))
-                    .cornerRadius(6)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.85))
+                    .cornerRadius(8)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Color.orange.opacity(0.4), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
             }
             
+            // Category Tabs Header (General, Closing Date, Passed, Closed)
+            HStack(spacing: 3) {
+                ForEach(["General", "Closing Date", "Passed", "Closed"], id: \.self) { cat in
+                    let count: Int = {
+                        switch cat {
+                        case "General": return viewModel.timeEvents.filter { !$0.isClosed }.count
+                        case "Closing Date":
+                            let threshold = Calendar.current.date(byAdding: .day, value: 3, to: liveNow) ?? liveNow.addingTimeInterval(86400 * 3)
+                            return viewModel.timeEvents.filter { !$0.isClosed && $0.targetDate > liveNow && $0.targetDate <= threshold }.count
+                        case "Passed": return viewModel.timeEvents.filter { !$0.isClosed && $0.targetDate <= liveNow }.count
+                        case "Closed": return viewModel.timeEvents.filter { $0.isClosed }.count
+                        default: return 0
+                        }
+                    }()
+                    
+                    let isSelected = timeTrackerCategoryTab == cat
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            timeTrackerCategoryTab = cat
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Text(cat == "Closing Date" ? "Closing (≤3d)" : cat)
+                                .font(.system(size: 10, weight: isSelected ? .bold : .medium))
+                            if count > 0 {
+                                Text("\(count)")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.08))
+                                    .cornerRadius(5)
+                            }
+                        }
+                        .foregroundColor(isSelected ? .white : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(isSelected ? Color.blue.opacity(0.85) : Color.clear)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            
+            // Folder Control Toolbar (Only visible in "General" tab)
+            if timeTrackerCategoryTab == "General" {
+                HStack(spacing: 6) {
+                    let areAllCollapsed = !viewModel.timeEventFolderOrder.isEmpty && viewModel.timeEventFolderOrder.allSatisfy { collapsedTimeFolders.contains($0) }
+                    
+                    if !viewModel.timeEventFolderOrder.isEmpty {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if areAllCollapsed {
+                                    collapsedTimeFolders.removeAll()
+                                } else {
+                                    collapsedTimeFolders = Set(viewModel.timeEventFolderOrder)
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: areAllCollapsed ? "chevron.down.circle" : "chevron.up.circle")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(areAllCollapsed ? "Expand" : "Collapse")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 7)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isTimeTrackerEditMode.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: isTimeTrackerEditMode ? "checkmark.circle.fill" : "pencil")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(isTimeTrackerEditMode ? "Done" : "Edit")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(isTimeTrackerEditMode ? Color.blue : Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        newTimeFolderNameInput = ""
+                        withAnimation(.spring(response: 0.3)) {
+                            isAddingTimeFolder.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Text("+ Folder")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Add Folder Input Card
+                if isAddingTimeFolder {
+                    HStack(spacing: 8) {
+                        TextField("Folder Name (e.g. Work, Personal)...", text: $newTimeFolderNameInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .padding(6)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                        
+                        Button("Add") {
+                            let clean = newTimeFolderNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !clean.isEmpty {
+                                viewModel.addTimeEventFolder(name: clean)
+                                isAddingTimeFolder = false
+                            }
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.blue)
+                        .buttonStyle(.plain)
+                        
+                        Button("Cancel") {
+                            isAddingTimeFolder = false
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .buttonStyle(.plain)
+                    }
+                    .padding(8)
+                    .background(Color.white.opacity(0.03))
+                    .cornerRadius(6)
+                }
+            }
+            
             // Create / Edit Form Card
             if isCreatingTimeEvent || editingTimeEventId != nil {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(editingTimeEventId != nil ? "EDIT EVENT TIMER" : "CREATE NEW TIME TARGET")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.orange)
                     
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("EVENT TITLE")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 8.5, weight: .semibold))
                             .foregroundColor(.secondary)
                         
-                        TextField("e.g. New Year 2027, Product Launch, Birthday", text: $timeEventTitleInput)
+                        TextField("e.g. Daily Standup, Birthday, Launch", text: $timeEventTitleInput)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12))
-                            .padding(8)
+                            .padding(7)
                             .background(Color.white.opacity(0.06))
                             .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                            )
                     }
                     
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("TARGET DATE & TIME (FUTURE OR PAST)")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.secondary)
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("FOLDER")
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            
+                            Picker("", selection: $timeEventFolderInput) {
+                                Text("(No Folder / Root)").tag("")
+                                ForEach(viewModel.timeEventFolderOrder, id: \.self) { folderName in
+                                    Text(folderName).tag(folderName)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                        }
                         
-                        DatePicker(
-                            "",
-                            selection: $timeEventDateInput,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .datePickerStyle(.field)
-                        .labelsHidden()
-                        .padding(4)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(6)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MODE")
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            
+                            Picker("", selection: $timeEventTimerTypeInput) {
+                                Text("Unlimited").tag(TimerType.unlimited)
+                                Text("One-Time").tag(TimerType.oneTime)
+                                Text("Restart").tag(TimerType.restart)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+                    }
+                    
+                    if timeEventTimerTypeInput == .restart {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("RESTART FREQUENCY")
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(.orange)
+                            
+                            Picker("", selection: $timeEventFrequencyInput) {
+                                Text("Daily").tag(RestartFrequency.daily)
+                                Text("Weekly").tag(RestartFrequency.weekly)
+                                Text("Monthly").tag(RestartFrequency.monthly)
+                                Text("Yearly").tag(RestartFrequency.yearly)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+                        
+                        switch timeEventFrequencyInput {
+                        case .daily:
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("DAILY TIME")
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                
+                                DatePicker("", selection: $timeEventDateInput, displayedComponents: [.hourAndMinute])
+                                    .datePickerStyle(.field)
+                                    .labelsHidden()
+                                    .padding(4)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(6)
+                            }
+                        case .weekly:
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("WEEKLY DAY & TIME")
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                
+                                HStack(spacing: 8) {
+                                    Picker("", selection: timeEventWeeklyDayBinding) {
+                                        Text("Monday").tag(2)
+                                        Text("Tuesday").tag(3)
+                                        Text("Wednesday").tag(4)
+                                        Text("Thursday").tag(5)
+                                        Text("Friday").tag(6)
+                                        Text("Saturday").tag(7)
+                                        Text("Sunday").tag(1)
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                    
+                                    DatePicker("", selection: $timeEventDateInput, displayedComponents: [.hourAndMinute])
+                                        .datePickerStyle(.field)
+                                        .labelsHidden()
+                                        .padding(4)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(6)
+                                }
+                            }
+                        case .monthly:
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("MONTHLY DAY & TIME")
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                
+                                HStack(spacing: 8) {
+                                    Picker("", selection: timeEventMonthlyDayBinding) {
+                                        ForEach(1...31, id: \.self) { day in
+                                            Text("Day \(day)").tag(day)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                    
+                                    DatePicker("", selection: $timeEventDateInput, displayedComponents: [.hourAndMinute])
+                                        .datePickerStyle(.field)
+                                        .labelsHidden()
+                                        .padding(4)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(6)
+                                }
+                            }
+                        case .yearly:
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("YEARLY DATE & TIME")
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                
+                                DatePicker("", selection: $timeEventDateInput, displayedComponents: [.date, .hourAndMinute])
+                                    .datePickerStyle(.field)
+                                    .labelsHidden()
+                                    .padding(4)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(6)
+                            }
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("TARGET DATE & TIME")
+                                .font(.system(size: 8.5, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            
+                            DatePicker("", selection: $timeEventDateInput, displayedComponents: [.date, .hourAndMinute])
+                                .datePickerStyle(.field)
+                                .labelsHidden()
+                                .padding(4)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(6)
+                        }
                     }
                     
                     HStack {
@@ -1122,9 +1579,24 @@ struct DropdownView: View {
                         
                         Button(action: {
                             if let editId = editingTimeEventId {
-                                viewModel.updateTimeEvent(id: editId, title: timeEventTitleInput, targetDate: timeEventDateInput)
+                                let isClosedCurrent = viewModel.timeEvents.first(where: { $0.id == editId })?.isClosed ?? false
+                                viewModel.updateTimeEvent(
+                                    id: editId,
+                                    title: timeEventTitleInput,
+                                    folder: timeEventFolderInput,
+                                    targetDate: timeEventDateInput,
+                                    timerType: timeEventTimerTypeInput,
+                                    restartFrequency: timeEventFrequencyInput,
+                                    isClosed: isClosedCurrent
+                                )
                             } else {
-                                viewModel.addTimeEvent(title: timeEventTitleInput, targetDate: timeEventDateInput)
+                                viewModel.addTimeEvent(
+                                    title: timeEventTitleInput,
+                                    folder: timeEventFolderInput,
+                                    targetDate: timeEventDateInput,
+                                    timerType: timeEventTimerTypeInput,
+                                    restartFrequency: timeEventFrequencyInput
+                                )
                             }
                             withAnimation(.spring(response: 0.35)) {
                                 isCreatingTimeEvent = false
@@ -1136,107 +1608,211 @@ struct DropdownView: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.orange)
-                                .cornerRadius(6)
+                                .background(Color.blue.opacity(0.85))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                                )
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(12)
-                .background(Color.orange.opacity(0.08))
-                .cornerRadius(10)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(8)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 )
             }
             
-            // Events List
-            if viewModel.timeEvents.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "timer")
-                        .font(.system(size: 28))
-                        .foregroundColor(.secondary.opacity(0.5))
-                    Text("No Timers Added Yet")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Text("Click '+ New Event' to track countdowns or past milestones.")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary.opacity(0.7))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 30)
-                .background(Color.white.opacity(0.02))
-                .cornerRadius(8)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(viewModel.timeEvents) { event in
-                        let diff = formatTimeEventDiff(title: event.title, targetDate: event.targetDate, now: liveNow)
-                        
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    Text(diff.badgeText)
-                                        .font(.system(size: 7, weight: .bold))
-                                        .foregroundColor(diff.isFuture ? .cyan : .orange)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2)
-                                        .background((diff.isFuture ? Color.cyan : Color.orange).opacity(0.18))
-                                        .cornerRadius(4)
-                                    
-                                    Text(diff.headlineText)
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
-                                }
-                                
-                                Text(diff.timerText)
-                                    .font(.system(size: 15, weight: .heavy, design: .monospaced))
-                                    .foregroundColor(diff.isFuture ? .cyan : .orange)
-                                
-                                Text("Target: \(event.targetDate.formatted(date: .numeric, time: .shortened))")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 8) {
-                                Button(action: {
-                                    editingTimeEventId = event.id
-                                    timeEventTitleInput = event.title
-                                    timeEventDateInput = event.targetDate
-                                    isCreatingTimeEvent = false
-                                }) {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 11))
+            // Events List View (by Category Tab)
+            if timeTrackerCategoryTab == "General" {
+                // GENERAL TAB: Render Folders & Timers as Collapsible Groups
+                let rootEvents = viewModel.timeEvents.filter { !$0.isClosed && $0.folder.isEmpty }
+                
+                if rootEvents.isEmpty && viewModel.timeEventFolderOrder.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 26))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("No Timers Added Yet")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Text("Click '+ New Event' or '+ New Folder' to get started.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 26)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(8)
+                } else {
+                    VStack(spacing: 12) {
+                        // Uncategorized / Root Timers
+                        if !rootEvents.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if !viewModel.timeEventFolderOrder.isEmpty {
+                                    Text("UNCATEGORIZED")
+                                        .font(.system(size: 8, weight: .bold))
                                         .foregroundColor(.secondary)
+                                        .padding(.leading, 2)
                                 }
-                                .buttonStyle(.plain)
-                                .help("Edit Event")
                                 
-                                Button(action: {
-                                    viewModel.deleteTimeEvent(id: event.id)
-                                }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.red.opacity(0.8))
+                                ForEach(rootEvents) { event in
+                                    renderTimeEventCard(event)
                                 }
-                                .buttonStyle(.plain)
-                                .help("Delete Event")
                             }
                         }
-                        .padding(12)
-                        .background(Color.white.opacity(0.04))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                        )
+                        
+                        // User Folders with Collapsible Sections
+                        ForEach(viewModel.timeEventFolderOrder, id: \.self) { folderName in
+                            let folderEvents = viewModel.timeEvents.filter { !$0.isClosed && $0.folder == folderName }
+                            let isCollapsed = collapsedTimeFolders.contains(folderName)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                // Collapsible Folder Header
+                                HStack(spacing: 6) {
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            if isCollapsed {
+                                                collapsedTimeFolders.remove(folderName)
+                                            } else {
+                                                collapsedTimeFolders.insert(folderName)
+                                            }
+                                        }
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundColor(.secondary)
+                                            
+                                            Image(systemName: "folder.fill")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.orange)
+                                            
+                                            Text(folderName)
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(.white)
+                                            
+                                            Text("\(folderEvents.count)")
+                                                .font(.system(size: 8.5, weight: .bold))
+                                                .foregroundColor(.orange)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1)
+                                                .background(Color.orange.opacity(0.18))
+                                                .cornerRadius(5)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    Spacer()
+                                    
+                                    if isTimeTrackerEditMode {
+                                        HStack(spacing: 4) {
+                                            Button(action: {
+                                                viewModel.moveTimeEventFolderUp(name: folderName)
+                                            }) {
+                                                Image(systemName: "chevron.up")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            
+                                            Button(action: {
+                                                viewModel.moveTimeEventFolderDown(name: folderName)
+                                            }) {
+                                                Image(systemName: "chevron.down")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                        
+                                        Button(action: {
+                                            timeEventTitleInput = ""
+                                            timeEventFolderInput = folderName
+                                            timeEventDateInput = Date().addingTimeInterval(86400)
+                                            timeEventTimerTypeInput = .unlimited
+                                            timeEventFrequencyInput = .daily
+                                            editingTimeEventId = nil
+                                            withAnimation(.spring(response: 0.35)) {
+                                                isCreatingTimeEvent = true
+                                            }
+                                        }) {
+                                            Image(systemName: "plus.circle")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.orange)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Add timer to this folder")
+                                        
+                                        Button(action: {
+                                            viewModel.deleteTimeEventFolder(name: folderName)
+                                        }) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.red.opacity(0.7))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Delete Folder")
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(6)
+                                
+                                // Collapsible Content
+                                if !isCollapsed {
+                                    if folderEvents.isEmpty {
+                                        Text("No active timers in this folder.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.6))
+                                            .padding(.leading, 12)
+                                            .padding(.vertical, 4)
+                                    } else {
+                                        VStack(spacing: 8) {
+                                            ForEach(folderEvents) { event in
+                                                renderTimeEventCard(event)
+                                            }
+                                        }
+                                        .padding(.leading, 6)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // CLOSING DATE, PASSED, and CLOSED TABS: Direct Clean Event List (No Folder Headers)
+                if filteredTimeEvents.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 26))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text(timeTrackerCategoryTab == "Closed" ? "No Closed Events" : (timeTrackerCategoryTab == "Passed" ? "No Passed Events" : "No Closing Timers"))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Text("Timers matching this view will appear here.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 26)
+                    .background(Color.white.opacity(0.02))
+                    .cornerRadius(8)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(filteredTimeEvents) { event in
+                            renderTimeEventCard(event)
+                        }
                     }
                 }
             }
         }
+        .padding(.bottom, 20)
         .onAppear {
             startTimeTickerIfNeeded()
         }

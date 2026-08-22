@@ -39,6 +39,7 @@ class StorageViewModel: ObservableObject {
     @Published var enableTimeTracker = true
     @Published var tabOrder: [Int] = [0, 1, 2, 3, 4, 5]
     @Published var timeEvents: [TimeEvent] = []
+    @Published var timeEventFolderOrder: [String] = []
     @Published var tabShortcuts: [Int: TabShortcut] = [:]
     @Published var customCommandFolderOrder: [String] = []
     @Published var quickNoteFolderOrder: [String] = []
@@ -2388,6 +2389,7 @@ class StorageViewModel: ObservableObject {
         "SelectedLogo",
         "SelectedRecordLogo",
         "SavedTimeEvents",
+        "TimeEventFolderOrder",
         "TweakTimeTracker"
     ]
     
@@ -2613,21 +2615,130 @@ class StorageViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Time Tracker & Event Countdowns Helpers
+    // MARK: - Time Tracker Folders & Auto-Restart Logic
     
-    func addTimeEvent(title: String, targetDate: Date) {
+    func saveTimeEventFolderOrder() {
+        UserDefaults.standard.set(timeEventFolderOrder, forKey: "TimeEventFolderOrder")
+        self.objectWillChange.send()
+    }
+    
+    func loadTimeEventFolderOrder() {
+        if let saved = UserDefaults.standard.stringArray(forKey: "TimeEventFolderOrder") {
+            self.timeEventFolderOrder = saved
+        } else {
+            self.timeEventFolderOrder = []
+            saveTimeEventFolderOrder()
+        }
+    }
+    
+    func addTimeEventFolder(name: String) {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty && !timeEventFolderOrder.contains(clean) else { return }
+        timeEventFolderOrder.append(clean)
+        saveTimeEventFolderOrder()
+    }
+    
+    func deleteTimeEventFolder(name: String) {
+        timeEventFolderOrder.removeAll { $0 == name }
+        for i in 0..<timeEvents.count {
+            if timeEvents[i].folder == name {
+                timeEvents[i].folder = "" // Re-assign to root/uncategorized
+            }
+        }
+        saveTimeEventFolderOrder()
+        saveTimeEvents()
+    }
+    
+    func moveTimeEventFolderUp(name: String) {
+        guard let idx = timeEventFolderOrder.firstIndex(of: name), idx > 0 else { return }
+        timeEventFolderOrder.swapAt(idx, idx - 1)
+        saveTimeEventFolderOrder()
+    }
+    
+    func moveTimeEventFolderDown(name: String) {
+        guard let idx = timeEventFolderOrder.firstIndex(of: name), idx < timeEventFolderOrder.count - 1 else { return }
+        timeEventFolderOrder.swapAt(idx, idx + 1)
+        saveTimeEventFolderOrder()
+    }
+    
+    /// Auto-restarts recurring timers and auto-closes One-Time timers when targetDate <= now
+    func checkAndProcessRestartTimers(now: Date = Date()) {
+        var updated = false
+        let calendar = Calendar.current
+        
+        for i in 0..<timeEvents.count {
+            guard !timeEvents[i].isClosed else { continue }
+            
+            if timeEvents[i].timerType == .oneTime && timeEvents[i].targetDate <= now {
+                timeEvents[i].isClosed = true
+                updated = true
+                continue
+            }
+            
+            if timeEvents[i].timerType == .restart {
+                var loopCount = 0
+                while timeEvents[i].targetDate <= now && loopCount < 500 {
+                    loopCount += 1
+                    updated = true
+                    timeEvents[i].restartCount += 1
+                    let oldTarget = timeEvents[i].targetDate
+                    
+                    switch timeEvents[i].restartFrequency {
+                    case .daily:
+                        timeEvents[i].targetDate = calendar.date(byAdding: .day, value: 1, to: oldTarget) ?? oldTarget.addingTimeInterval(86400)
+                    case .weekly:
+                        timeEvents[i].targetDate = calendar.date(byAdding: .day, value: 7, to: oldTarget) ?? oldTarget.addingTimeInterval(86400 * 7)
+                    case .monthly:
+                        timeEvents[i].targetDate = calendar.date(byAdding: .month, value: 1, to: oldTarget) ?? oldTarget.addingTimeInterval(86400 * 30)
+                    case .yearly:
+                        timeEvents[i].targetDate = calendar.date(byAdding: .year, value: 1, to: oldTarget) ?? oldTarget.addingTimeInterval(86400 * 365)
+                    }
+                }
+            }
+        }
+        
+        if updated {
+            saveTimeEvents()
+        }
+    }
+    
+    func addTimeEvent(title: String, folder: String, targetDate: Date, timerType: TimerType, restartFrequency: RestartFrequency) {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalTitle = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
-        let newEvent = TimeEvent(id: UUID(), title: finalTitle, targetDate: targetDate, createdAt: Date())
+        let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let newEvent = TimeEvent(
+            id: UUID(),
+            title: finalTitle,
+            folder: cleanFolder,
+            targetDate: targetDate,
+            createdAt: Date(),
+            timerType: timerType,
+            restartFrequency: restartFrequency,
+            isClosed: false,
+            restartCount: 0
+        )
         timeEvents.append(newEvent)
         saveTimeEvents()
     }
     
-    func updateTimeEvent(id: UUID, title: String, targetDate: Date) {
+    func updateTimeEvent(id: UUID, title: String, folder: String, targetDate: Date, timerType: TimerType, restartFrequency: RestartFrequency, isClosed: Bool) {
         if let index = timeEvents.firstIndex(where: { $0.id == id }) {
             let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines)
             timeEvents[index].title = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
+            timeEvents[index].folder = cleanFolder
             timeEvents[index].targetDate = targetDate
+            timeEvents[index].timerType = timerType
+            timeEvents[index].restartFrequency = restartFrequency
+            timeEvents[index].isClosed = isClosed
+            saveTimeEvents()
+        }
+    }
+    
+    func toggleTimeEventClosed(id: UUID) {
+        if let index = timeEvents.firstIndex(where: { $0.id == id }) {
+            timeEvents[index].isClosed.toggle()
             saveTimeEvents()
         }
     }
@@ -2645,6 +2756,7 @@ class StorageViewModel: ObservableObject {
     }
     
     func loadTimeEvents() {
+        loadTimeEventFolderOrder()
         if let data = UserDefaults.standard.data(forKey: "SavedTimeEvents"),
            let decoded = try? JSONDecoder().decode([TimeEvent].self, from: data) {
             self.timeEvents = decoded
@@ -2654,11 +2766,12 @@ class StorageViewModel: ObservableObject {
             let futureDate = calendar.date(byAdding: .day, value: 30, to: Date()) ?? Date()
             let pastDate = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
             self.timeEvents = [
-                TimeEvent(id: UUID(), title: "Project Milestone", targetDate: futureDate, createdAt: Date()),
-                TimeEvent(id: UUID(), title: "Mac ASC Release", targetDate: pastDate, createdAt: Date())
+                TimeEvent(id: UUID(), title: "Project Milestone", folder: "", targetDate: futureDate, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0),
+                TimeEvent(id: UUID(), title: "Mac ASC Release", folder: "", targetDate: pastDate, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0)
             ]
             saveTimeEvents()
         }
+        checkAndProcessRestartTimers()
     }
     
     func startScreenRecording() {
@@ -2860,9 +2973,29 @@ struct ChatThread: Identifiable, Codable, Equatable {
     }
 }
 
+enum TimerType: String, Codable, CaseIterable {
+    case unlimited = "Unlimited"
+    case restart = "Restart"
+    case oneTime = "One-Time"
+}
+
+enum RestartFrequency: String, Codable, CaseIterable {
+    case daily = "Daily"
+    case weekly = "Weekly"
+    case monthly = "Monthly"
+    case yearly = "Yearly"
+}
+
 struct TimeEvent: Identifiable, Codable, Equatable {
-    let id: UUID
+    var id: UUID = UUID()
     var title: String
+    var folder: String = ""
     var targetDate: Date
     var createdAt: Date = Date()
+    
+    var timerType: TimerType = .unlimited
+    var restartFrequency: RestartFrequency = .daily
+    
+    var isClosed: Bool = false
+    var restartCount: Int = 0
 }
