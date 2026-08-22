@@ -2707,11 +2707,16 @@ class StorageViewModel: ObservableObject {
         let finalTitle = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
         let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        let calendar = Calendar.current
+        var comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: targetDate)
+        comps.second = 0
+        let normalizedDate = calendar.date(from: comps) ?? targetDate
+        
         let newEvent = TimeEvent(
             id: UUID(),
             title: finalTitle,
             folder: cleanFolder,
-            targetDate: targetDate,
+            targetDate: normalizedDate,
             createdAt: Date(),
             timerType: timerType,
             restartFrequency: restartFrequency,
@@ -2726,9 +2731,15 @@ class StorageViewModel: ObservableObject {
         if let index = timeEvents.firstIndex(where: { $0.id == id }) {
             let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
             let cleanFolder = folder.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            let calendar = Calendar.current
+            var comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: targetDate)
+            comps.second = 0
+            let normalizedDate = calendar.date(from: comps) ?? targetDate
+            
             timeEvents[index].title = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
             timeEvents[index].folder = cleanFolder
-            timeEvents[index].targetDate = targetDate
+            timeEvents[index].targetDate = normalizedDate
             timeEvents[index].timerType = timerType
             timeEvents[index].restartFrequency = restartFrequency
             timeEvents[index].isClosed = isClosed
@@ -2758,16 +2769,34 @@ class StorageViewModel: ObservableObject {
     func loadTimeEvents() {
         loadTimeEventFolderOrder()
         if let data = UserDefaults.standard.data(forKey: "SavedTimeEvents"),
-           let decoded = try? JSONDecoder().decode([TimeEvent].self, from: data) {
+           var decoded = try? JSONDecoder().decode([TimeEvent].self, from: data) {
+            
+            let calendar = Calendar.current
+            for i in 0..<decoded.count {
+                var comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: decoded[i].targetDate)
+                comps.second = 0
+                if let normalized = calendar.date(from: comps) {
+                    decoded[i].targetDate = normalized
+                }
+            }
             self.timeEvents = decoded
         } else {
             // Default initial example events if none exist
             let calendar = Calendar.current
             let futureDate = calendar.date(byAdding: .day, value: 30, to: Date()) ?? Date()
             let pastDate = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+            
+            var futureComps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: futureDate)
+            futureComps.second = 0
+            let normFuture = calendar.date(from: futureComps) ?? futureDate
+            
+            var pastComps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: pastDate)
+            pastComps.second = 0
+            let normPast = calendar.date(from: pastComps) ?? pastDate
+            
             self.timeEvents = [
-                TimeEvent(id: UUID(), title: "Project Milestone", folder: "", targetDate: futureDate, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0),
-                TimeEvent(id: UUID(), title: "Mac ASC Release", folder: "", targetDate: pastDate, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0)
+                TimeEvent(id: UUID(), title: "Project Milestone", folder: "", targetDate: normFuture, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0),
+                TimeEvent(id: UUID(), title: "Mac ASC Release", folder: "", targetDate: normPast, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0)
             ]
             saveTimeEvents()
         }

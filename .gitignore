@@ -8,3 +8,4 @@ build/
 dmg_temp/
 Resources/models/*.gguf
 
+mask_icon.swift
