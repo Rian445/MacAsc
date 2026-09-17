@@ -15,6 +15,8 @@ class StatusBarController: NSObject {
     private var popover: KeyPanel
     private var viewModel: StorageViewModel
     private var cancellables = Set<AnyCancellable>()
+    private var globalEventMonitor: Any?
+    private var lastResignKeyCloseTime: TimeInterval = 0
     
     init(viewModel: StorageViewModel) {
         self.viewModel = viewModel
@@ -48,6 +50,7 @@ class StatusBarController: NSObject {
             button.image = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: "Mac ASC")
             button.action = #selector(togglePopover(_:))
             button.target = self
+            button.sendAction(on: [.leftMouseDown])
         }
         
         // Observe when the window loses focus to dismiss it
@@ -152,14 +155,25 @@ class StatusBarController: NSObject {
     }
     
     @objc func togglePopover(_ sender: AnyObject?) {
+        let now = ProcessInfo.processInfo.systemUptime
         if self.popover.isVisible {
             hidePopover()
         } else {
+            // Guard against race condition on macOS 15+ / 27 where clicking the status item
+            // causes the system menu bar to steal focus, triggering panelDidResignKey right
+            // before button.action is received. If recently closed, keep it closed.
+            if (now - lastResignKeyCloseTime) < 0.35 {
+                return
+            }
             showPopover()
         }
     }
     
     func hidePopover() {
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
         self.popover.orderOut(nil)
         viewModel.stopMonitoringRunningCommands()
     }
@@ -168,8 +182,14 @@ class StatusBarController: NSObject {
         guard let button = statusItem.button,
               let window = button.window else { return }
         
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        
         // Get the frame of the status bar item in screen coordinates
-        let buttonFrame = window.convertToScreen(button.frame)
+        let rectInWindow = button.convert(button.bounds, to: nil)
+        let buttonFrame = window.convertToScreen(rectInWindow)
         
         // Calculate the centered coordinates for the popover
         let popoverWidth = self.popover.frame.width
@@ -190,16 +210,48 @@ class StatusBarController: NSObject {
             self.popover.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             viewModel.startMonitoringRunningCommands()
+            
+            // Add global monitor to catch outside clicks on other windows/apps/desktop
+            globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                guard let self = self else { return }
+                // If user clicked our menu bar status item, let togglePopover handle closing it
+                if self.isMouseInStatusButton() {
+                    return
+                }
+                self.hidePopover()
+            }
         }
     }
     
+    private func isMouseInStatusButton() -> Bool {
+        guard let button = statusItem.button,
+              let window = button.window else { return false }
+        let mouseLocation = NSEvent.mouseLocation
+        let rectInWindow = button.convert(button.bounds, to: nil)
+        let screenRect = window.convertToScreen(rectInWindow)
+        return screenRect.insetBy(dx: -6, dy: -6).contains(mouseLocation)
+    }
+    
     @objc func panelDidResignKey(_ notification: Notification) {
-        // If the application is still active (e.g. displaying a confirmation dialog,
-        // color picker, or open file panel), do not dismiss the popover.
-        if NSApp.isActive {
+        // If the user clicked on the menu bar status item button, let togglePopover handle the toggle
+        if isMouseInStatusButton() {
             return
         }
+        
+        // If another window within the application became key (e.g. confirmation dialog,
+        // color picker, or open file panel), do not dismiss the popover.
+        if NSApp.isActive, let keyWindow = NSApp.keyWindow, keyWindow !== self.popover {
+            return
+        }
+        
+        lastResignKeyCloseTime = ProcessInfo.processInfo.systemUptime
         hidePopover()
+    }
+    
+    deinit {
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 }
 

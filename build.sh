@@ -66,6 +66,7 @@ fi
 
 
 # Find Swift compiler and SDK path
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Library/Developer/CommandLineTools}"
 SDK_PATH=$(xcrun --show-sdk-path --sdk macosx)
 echo "Using macOS SDK at: ${SDK_PATH}"
 
