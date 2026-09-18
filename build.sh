@@ -113,6 +113,17 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <string>Mac ASC requires microphone access to record voice audio alongside screen recordings.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Mac ASC requires screen recording access to capture your display or selected windows.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.rian445.MacASC</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>macasc</string>
+            </array>
+        </dict>
+    </array>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

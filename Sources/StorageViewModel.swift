@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import AppKit
 import UniformTypeIdentifiers
+@preconcurrency import UserNotifications
 
 @MainActor
 class StorageViewModel: ObservableObject {
@@ -37,6 +38,7 @@ class StorageViewModel: ObservableObject {
     @Published var enableAiChat = true
     @Published var enableScreenRecorder = true
     @Published var enableTimeTracker = true
+    @Published var isNotificationAuthorized: Bool = true
     @Published var tabOrder: [Int] = [0, 1, 2, 3, 4, 5]
     @Published var timeEvents: [TimeEvent] = []
     @Published var timeEventFolderOrder: [String] = []
@@ -2681,6 +2683,7 @@ class StorageViewModel: ObservableObject {
                     loopCount += 1
                     updated = true
                     timeEvents[i].restartCount += 1
+                    timeEvents[i].lastNotified24hDate = nil
                     let oldTarget = timeEvents[i].targetDate
                     
                     switch timeEvents[i].restartFrequency {
@@ -2721,10 +2724,12 @@ class StorageViewModel: ObservableObject {
             timerType: timerType,
             restartFrequency: restartFrequency,
             isClosed: false,
-            restartCount: 0
+            restartCount: 0,
+            lastNotified24hDate: nil
         )
         timeEvents.append(newEvent)
         saveTimeEvents()
+        checkAndNotifyUpcomingEvents()
     }
     
     func updateTimeEvent(id: UUID, title: String, folder: String, targetDate: Date, timerType: TimerType, restartFrequency: RestartFrequency, isClosed: Bool) {
@@ -2737,6 +2742,11 @@ class StorageViewModel: ObservableObject {
             comps.second = 0
             let normalizedDate = calendar.date(from: comps) ?? targetDate
             
+            // If target date changed, reset notification flag so user gets notified for the new deadline
+            if timeEvents[index].targetDate != normalizedDate {
+                timeEvents[index].lastNotified24hDate = nil
+            }
+            
             timeEvents[index].title = cleanTitle.isEmpty ? "Untitled Event" : cleanTitle
             timeEvents[index].folder = cleanFolder
             timeEvents[index].targetDate = normalizedDate
@@ -2744,6 +2754,7 @@ class StorageViewModel: ObservableObject {
             timeEvents[index].restartFrequency = restartFrequency
             timeEvents[index].isClosed = isClosed
             saveTimeEvents()
+            checkAndNotifyUpcomingEvents()
         }
     }
     
@@ -2751,6 +2762,7 @@ class StorageViewModel: ObservableObject {
         if let index = timeEvents.firstIndex(where: { $0.id == id }) {
             timeEvents[index].isClosed.toggle()
             saveTimeEvents()
+            checkAndNotifyUpcomingEvents()
         }
     }
     
@@ -2795,12 +2807,125 @@ class StorageViewModel: ObservableObject {
             let normPast = calendar.date(from: pastComps) ?? pastDate
             
             self.timeEvents = [
-                TimeEvent(id: UUID(), title: "Project Milestone", folder: "", targetDate: normFuture, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0),
-                TimeEvent(id: UUID(), title: "Mac ASC Release", folder: "", targetDate: normPast, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0)
+                TimeEvent(id: UUID(), title: "Project Milestone", folder: "", targetDate: normFuture, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0, lastNotified24hDate: nil),
+                TimeEvent(id: UUID(), title: "Mac ASC Release", folder: "", targetDate: normPast, createdAt: Date(), timerType: .unlimited, restartFrequency: .daily, isClosed: false, restartCount: 0, lastNotified24hDate: nil)
             ]
             saveTimeEvents()
         }
         checkAndProcessRestartTimers()
+        checkAndNotifyUpcomingEvents()
+        startTimeTrackerBackgroundNotificationTimer()
+    }
+    
+    // MARK: - Time Tracker Notification Checker
+    private var timeTrackerNotificationCancellable: AnyCancellable?
+    
+    func startTimeTrackerBackgroundNotificationTimer() {
+        guard timeTrackerNotificationCancellable == nil else { return }
+        timeTrackerNotificationCancellable = Timer.publish(every: 60.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self, self.enableTimeTracker else { return }
+                self.checkAndProcessRestartTimers()
+                self.checkAndNotifyUpcomingEvents()
+            }
+    }
+    
+    /// Scans all active time tracker events and triggers a system notification
+    /// if any event has less than 24 hours remaining until its targetDate.
+    func checkAndNotifyUpcomingEvents(now: Date = Date()) {
+        guard enableTimeTracker else { return }
+        var updated = false
+        
+        for i in 0..<timeEvents.count {
+            let event = timeEvents[i]
+            guard !event.isClosed else { continue }
+            guard event.targetDate > now else { continue }
+            
+            let timeRemaining = event.targetDate.timeIntervalSince(now)
+            // If remaining time is <= 24 hours (86,400 seconds)
+            if timeRemaining <= 86400 {
+                // Check if already notified for this exact target date
+                let alreadyNotified: Bool
+                if let lastNotified = event.lastNotified24hDate {
+                    alreadyNotified = abs(lastNotified.timeIntervalSince(event.targetDate)) < 60
+                } else {
+                    alreadyNotified = false
+                }
+                
+                if !alreadyNotified {
+                    timeEvents[i].lastNotified24hDate = event.targetDate
+                    updated = true
+                    
+                    let totalMinutes = max(1, Int(ceil(timeRemaining / 60)))
+                    let hours = totalMinutes / 60
+                    let minutes = totalMinutes % 60
+                    let remainingStr: String
+                    if hours > 0 && minutes > 0 {
+                        remainingStr = "\(hours)h \(minutes)m"
+                    } else if hours > 0 {
+                        remainingStr = "\(hours)h"
+                    } else {
+                        remainingStr = "\(minutes)m"
+                    }
+                    
+                    let title = "Mac ASC • Time Tracker"
+                    let subtitle = "\(event.title) - Less than 1 day left!"
+                    let body = "\"\(event.title)\" has less than 24 hours remaining (\(remainingStr) left). Due: \(event.targetDate.formatted(date: .numeric, time: .shortened))."
+                    
+                    sendSystemNotification(title: title, subtitle: subtitle, message: body, eventId: event.id)
+                }
+            }
+        }
+        
+        if updated {
+            saveTimeEvents()
+        }
+    }
+    
+    func checkNotificationSettings() {
+        if #available(macOS 10.14, *) {
+            UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+                DispatchQueue.main.async {
+                    self?.isNotificationAuthorized = (settings.authorizationStatus == .authorized)
+                }
+            }
+        }
+    }
+    
+    func openSystemNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    func sendSystemNotification(title: String, subtitle: String, message: String, eventId: UUID? = nil) {
+        if #available(macOS 10.14, *) {
+            let center = UNUserNotificationCenter.current()
+            let content = UNMutableNotificationContent()
+            content.title = title
+            if !subtitle.isEmpty {
+                content.subtitle = subtitle
+            }
+            content.body = message
+            content.sound = .default
+            if let id = eventId {
+                content.userInfo = ["eventId": id.uuidString]
+            }
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: nil
+            )
+            center.add(request) { [weak self] error in
+                if let error = error {
+                    print("[Mac ASC] Notification delivery error: \(error.localizedDescription)")
+                    DispatchQueue.main.async {
+                        self?.checkNotificationSettings()
+                    }
+                }
+            }
+        }
     }
     
     func startScreenRecording() {
@@ -3027,4 +3152,5 @@ struct TimeEvent: Identifiable, Codable, Equatable {
     
     var isClosed: Bool = false
     var restartCount: Int = 0
+    var lastNotified24hDate: Date? = nil
 }

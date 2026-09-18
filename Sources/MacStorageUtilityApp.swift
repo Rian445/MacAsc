@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+@preconcurrency import UserNotifications
 
 @MainActor
 class KeyPanel: NSPanel {
@@ -256,12 +257,60 @@ class StatusBarController: NSObject {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     var statusBarController: StatusBarController?
     var viewModel = StorageViewModel()
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+            DispatchQueue.main.async {
+                self?.viewModel.checkNotificationSettings()
+                self?.viewModel.checkAndNotifyUpcomingEvents()
+            }
+        }
         statusBarController = StatusBarController(viewModel: viewModel)
+    }
+    
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if url.scheme == "macasc" {
+                let idString = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value
+                handleNotificationClick(eventIdString: idString)
+            }
+        }
+    }
+    
+    // UNUserNotificationCenterDelegate: show banner in foreground
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        if #available(macOS 11.0, *) {
+            completionHandler([.banner, .sound, .list])
+        } else {
+            completionHandler([.alert, .sound])
+        }
+    }
+    
+    // UNUserNotificationCenterDelegate: user clicked the notification banner!
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let eventIdString = response.notification.request.content.userInfo["eventId"] as? String
+        DispatchQueue.main.async { [weak self] in
+            self?.handleNotificationClick(eventIdString: eventIdString)
+        }
+        completionHandler()
+    }
+    
+    private func handleNotificationClick(eventIdString: String?) {
+        statusBarController?.showPopover()
+        var eventUUID: UUID? = nil
+        if let idString = eventIdString {
+            eventUUID = UUID(uuidString: idString)
+        }
+        // Dispatch immediately and with a small delay to guarantee view subscription is active
+        NotificationCenter.default.post(name: Notification.Name("OpenTimeTrackerTab"), object: eventUUID)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            NotificationCenter.default.post(name: Notification.Name("OpenTimeTrackerTab"), object: eventUUID)
+        }
     }
 }
 

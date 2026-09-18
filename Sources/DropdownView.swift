@@ -83,7 +83,7 @@ struct DropdownView: View {
     @State private var timeEventFrequencyInput: RestartFrequency = .daily
     @State private var isAddingTimeFolder: Bool = false
     @State private var newTimeFolderNameInput: String = ""
-
+    @State private var highlightedTimeEventId: UUID? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -404,6 +404,19 @@ struct DropdownView: View {
             viewModel.stopMonitoringRunningCommands()
             removeKeyboardShortcutMonitor()
             stopTimeTicker()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTimeTrackerTab"))) { notif in
+            currentTopTab = 5
+            showSettings = false
+            timeTrackerCategoryTab = "General"
+            if let eventId = notif.object as? UUID {
+                highlightedTimeEventId = eventId
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                    if highlightedTimeEventId == eventId {
+                        highlightedTimeEventId = nil
+                    }
+                }
+            }
         }
     }
     
@@ -970,6 +983,7 @@ struct DropdownView: View {
         if timeTicker == nil {
             liveNow = Date()
             viewModel.checkAndProcessRestartTimers(now: liveNow)
+            viewModel.checkAndNotifyUpcomingEvents(now: liveNow)
             timeTicker = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak viewModel] _ in
                 DispatchQueue.main.async { [weak viewModel] in
                     guard let viewModel = viewModel else { return }
@@ -1109,12 +1123,13 @@ struct DropdownView: View {
                 
                 // Line 3: Sleek Single-Line Badges & Compact Target Details
                 HStack(spacing: 6) {
-                    Text(event.isClosed ? "CLOSED" : diff.badgeText)
+                    let isUnder24h = !event.isClosed && diff.isFuture && event.targetDate.timeIntervalSince(liveNow) <= 86400
+                    Text(event.isClosed ? "CLOSED" : (isUnder24h ? "< 24H LEFT" : diff.badgeText))
                         .font(.system(size: 7.5, weight: .bold))
-                        .foregroundColor(event.isClosed ? .gray : (diff.isFuture ? Color(red: 0.22, green: 0.74, blue: 0.98) : Color(red: 0.98, green: 0.57, blue: 0.24)))
+                        .foregroundColor(event.isClosed ? .gray : (isUnder24h ? Color(red: 1.0, green: 0.8, blue: 0.2) : (diff.isFuture ? Color(red: 0.22, green: 0.74, blue: 0.98) : Color(red: 0.98, green: 0.57, blue: 0.24))))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background((event.isClosed ? Color.gray : (diff.isFuture ? Color.cyan : Color.orange)).opacity(0.18))
+                        .background((event.isClosed ? Color.gray : (isUnder24h ? Color.yellow : (diff.isFuture ? Color.cyan : Color.orange))).opacity(0.18))
                         .cornerRadius(4)
                     
                     if event.timerType == .restart {
@@ -1194,11 +1209,11 @@ struct DropdownView: View {
             }
         }
         .padding(11)
-        .background(Color.white.opacity(0.04))
+        .background(highlightedTimeEventId == event.id ? Color.cyan.opacity(0.12) : Color.white.opacity(0.04))
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(highlightedTimeEventId == event.id ? Color.cyan : Color.white.opacity(0.08), lineWidth: highlightedTimeEventId == event.id ? 1.5 : 1)
         )
     }
     
@@ -1297,6 +1312,39 @@ struct DropdownView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
             )
+            
+            // Notification Authorization Warning Banner (if disabled in macOS System Settings)
+            if !viewModel.isNotificationAuthorized {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.slash.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 11))
+                    Text("Deadline alerts disabled in macOS System Settings")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.85))
+                    Spacer()
+                    Button(action: {
+                        viewModel.openSystemNotificationSettings()
+                    }) {
+                        Text("Enable")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.orange)
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.12))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+                )
+            }
             
             // Folder Control Toolbar (Only visible in "General" tab)
             if timeTrackerCategoryTab == "General" {
@@ -1815,6 +1863,7 @@ struct DropdownView: View {
         .padding(.bottom, 20)
         .onAppear {
             startTimeTickerIfNeeded()
+            viewModel.checkNotificationSettings()
         }
         .onDisappear {
             stopTimeTicker()
