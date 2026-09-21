@@ -260,9 +260,6 @@ struct DropdownView: View {
                         .background(Color.black.opacity(0.001))
                         .onAppear {
                             viewModel.loadAvailableModels()
-                            if viewModel.isAntigravityInstalled {
-                                viewModel.fetchAgyUsage()
-                            }
                         }
                 } else if tabToRender == 4 {
                     // Screen Recorder View
@@ -3188,9 +3185,6 @@ extension DropdownView {
             if (currentTopTab == 3 || safeTopTab == 3) && viewModel.isAntigravityInstalled {
                 Button(action: {
                     showAgyUsagePopover.toggle()
-                    if showAgyUsagePopover && viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
-                        viewModel.fetchAgyUsage()
-                    }
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "gauge.with.needle.fill")
@@ -3348,11 +3342,6 @@ extension DropdownView {
         .padding(10)
         .frame(width: 324)
         .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
-        .onAppear {
-            if viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
-                viewModel.fetchAgyUsage()
-            }
-        }
     }
     
     // Loading/Empty elements
