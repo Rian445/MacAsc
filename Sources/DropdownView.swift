@@ -2586,7 +2586,7 @@ extension DropdownView {
             
             HStack {
                 Spacer()
-                Text("Version 1.1.0")
+                Text("Version 2.0.0")
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
                 Spacer()

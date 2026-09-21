@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg"><b>📥 Download Latest Release DMG (v1.1.0)</b></a> •
+  <a href="https://github.com/Rian445/MacAsc/releases/download/v2.0.0/Mac_ASC.dmg"><b>📥 Download Latest Release DMG (v2.0.0)</b></a> •
   <a href="#-quick-installation"><b>⚡ Quick Installation</b></a> •
   <a href="#-user-manuals--technical-guides"><b>📖 User Manuals</b></a> •
   <a href="PRIVACY.md"><b>🔒 Privacy Policy</b></a> •
@@ -127,7 +127,7 @@ brew install --cask macasc
 ```
 
 ### Option 2: Direct DMG Download
-1. Download **[Mac_ASC.dmg (v1.1.0)](https://github.com/Rian445/MacAsc/releases/download/v1.1.0/Mac_ASC.dmg)**.
+1. Download **[Mac_ASC.dmg (v2.0.0)](https://github.com/Rian445/MacAsc/releases/download/v2.0.0/Mac_ASC.dmg)**.
 2. Double-click to mount the DMG.
 3. Drag **Mac ASC** into your **Applications** folder.
 
