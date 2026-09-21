@@ -46,7 +46,8 @@ struct DropdownView: View {
     @State private var newThreadFolderInput = ""
     @State private var showEditThreadDialog = false
     @State private var showRemoveAttachmentPopover = false
-    @State private var showAllModels = false
+    @State private var showAllModels = true
+    @State private var showAgyUsagePopover = false
     
     // AI Chat State
     @State private var tabPageIndex: Int = 0
@@ -208,6 +209,11 @@ struct DropdownView: View {
                             // Pinned Folders
                             pinnedFoldersSection
                             
+                            // Antigravity AI Quota Usage
+                            if viewModel.isAntigravityInstalled {
+                                diskInsightAgyUsageSection
+                            }
+                            
                             // Breakdown Switcher and Lists
                             breakdownSection
                         }
@@ -254,6 +260,9 @@ struct DropdownView: View {
                         .background(Color.black.opacity(0.001))
                         .onAppear {
                             viewModel.loadAvailableModels()
+                            if viewModel.isAntigravityInstalled {
+                                viewModel.fetchAgyUsage()
+                            }
                         }
                 } else if tabToRender == 4 {
                     // Screen Recorder View
@@ -2878,6 +2887,176 @@ extension DropdownView {
         }
     }
     
+    // Antigravity AI Quota Usage Section on Disk Insight (Compact 1 line per model)
+    private var diskInsightAgyUsageSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "gauge.with.needle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.cyan)
+                    Text("Antigravity Quota")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    Button(action: {
+                        viewModel.fetchAgyUsage()
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.cyan)
+                            .rotationEffect(.degrees(viewModel.isFetchingAgyUsage ? 360 : 0))
+                            .animation(viewModel.isFetchingAgyUsage ? .linear(duration: 1.0).repeatForever(autoreverses: false) : .default, value: viewModel.isFetchingAgyUsage)
+                            .padding(2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh quota only")
+                    .disabled(viewModel.isFetchingAgyUsage)
+                }
+                .padding(.leading, 2)
+                
+                Spacer()
+                
+                if viewModel.isFetchingAgyUsage {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .frame(width: 12, height: 12)
+                } else if let last = viewModel.agyUsageLastFetched {
+                    Text("Updated: \(formatDate(last))")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            if viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 3) {
+                        Text("No quota cached yet.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text("Click top scan ↻ or open Chat with AI to update.")
+                            .font(.system(size: 8.5))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                    .padding(.vertical, 6)
+                    Spacer()
+                }
+                .background(Color.white.opacity(0.02))
+                .cornerRadius(6)
+            } else {
+                VStack(spacing: 5) {
+                    if !viewModel.agyUsageGroups.isEmpty {
+                        ForEach(viewModel.agyUsageGroups) { group in
+                            compactModelRow(group: group)
+                        }
+                    } else {
+                        ForEach(viewModel.agyUsageQuotas) { item in
+                            HStack(spacing: 8) {
+                                Text(item.category)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 98, alignment: .leading)
+                                    .fixedSize()
+                                compactQuotaPill(item: item)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.03))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func compactModelRow(group: AgyUsageGroup) -> some View {
+        let isGemini = group.name.lowercased().contains("gemini")
+        let shortName = isGemini ? "Gemini" : (group.name.lowercased().contains("claude") ? "Claude + GPT" : group.name)
+        
+        return HStack(spacing: 8) {
+            // Group Name & Icon (compact 1 line, fixed symmetrical column)
+            HStack(spacing: 5) {
+                Image(systemName: isGemini ? "sparkles" : "cpu.fill")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(isGemini ? .blue : .purple)
+                Text(shortName)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white)
+                    .fixedSize()
+            }
+            .frame(width: 98, alignment: .leading)
+            .help(group.description.isEmpty ? group.name : group.description)
+            
+            // Both Quotas distributed symmetrically across the remaining width
+            HStack(spacing: 6) {
+                ForEach(group.quotas) { item in
+                    compactQuotaPill(item: item)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.03))
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+    
+    private func compactQuotaPill(item: AgyUsageQuota) -> some View {
+        let label = item.limitType.contains("Weekly") ? "Wk" : (item.limitType.contains("Five") || item.limitType.contains("5") ? "5h" : item.limitType)
+        let badgeColor: Color = item.fraction >= 0.5 ? .green : (item.fraction >= 0.2 ? .orange : .red)
+        let shortTime = item.refreshString.replacingOccurrences(of: "Refreshes in ", with: "")
+        
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                CircularQuotaRing(fraction: item.fraction, color: badgeColor, size: 11, lineWidth: 1.8)
+                
+                Text(label)
+                    .font(.system(size: 8.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .fixedSize()
+                
+                Spacer(minLength: 2)
+                
+                Text(item.percentageString)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(badgeColor)
+                    .fixedSize()
+            }
+            
+            HStack(spacing: 2.5) {
+                if item.refreshString == "Quota available" {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 6.5))
+                        .foregroundColor(.green)
+                    Text("Available")
+                        .font(.system(size: 7.5, weight: .medium))
+                        .foregroundColor(.green.opacity(0.9))
+                        .lineLimit(1)
+                } else {
+                    Image(systemName: "clock")
+                        .font(.system(size: 6.5))
+                        .foregroundColor(.secondary)
+                    Text("in \(shortTime)")
+                        .font(.system(size: 7.5))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3.5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(5)
+        .help("\(item.limitType): \(item.percentageString)\nStatus: \(item.refreshString)")
+    }
+    
     // Breakdown Section
     private var breakdownSection: some View {
         VStack(spacing: 10) {
@@ -2994,7 +3173,7 @@ extension DropdownView {
     
     // Footer
     private var footerView: some View {
-        HStack {
+        HStack(spacing: 10) {
             if let lastScan = viewModel.lastScanTime {
                 Text("Last scan: \(formatDate(lastScan))")
                     .font(.caption2)
@@ -3003,6 +3182,36 @@ extension DropdownView {
                 Text("Scanning system...")
                     .font(.caption2)
                     .foregroundColor(.secondary)
+            }
+            
+            // Usage button beside last scan (only for agy in chat window)
+            if (currentTopTab == 3 || safeTopTab == 3) && viewModel.isAntigravityInstalled {
+                Button(action: {
+                    showAgyUsagePopover.toggle()
+                    if showAgyUsagePopover && viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                        viewModel.fetchAgyUsage()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gauge.with.needle.fill")
+                            .font(.system(size: 9))
+                        Text("Agy Usage")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(.cyan)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.cyan.opacity(0.12))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showAgyUsagePopover, arrowEdge: .bottom) {
+                    agyUsagePopupView
+                }
             }
             
             Spacer()
@@ -3024,6 +3233,126 @@ extension DropdownView {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.black.opacity(0.1))
+    }
+    
+    // Antigravity Model Quota Usage Popover (Small Minimal Popup)
+    private var agyUsagePopupView: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            // Header
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "gauge.with.needle.fill")
+                        .foregroundColor(.cyan)
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Antigravity Quota")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    viewModel.fetchAgyUsage()
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.cyan)
+                        .padding(4)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(5)
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isFetchingAgyUsage)
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            // Content
+            if viewModel.isFetchingAgyUsage && viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                VStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Querying agy /usage...")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+            } else if let err = viewModel.agyUsageError, viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 13))
+                    Text(err)
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                    Button(action: {
+                        viewModel.fetchAgyUsage()
+                    }) {
+                        Text("Retry")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(Color.blue.opacity(0.8))
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            } else if viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                Text("No quota information available.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 5) {
+                    if !viewModel.agyUsageGroups.isEmpty {
+                        ForEach(viewModel.agyUsageGroups) { group in
+                            compactModelRow(group: group)
+                        }
+                    } else {
+                        ForEach(viewModel.agyUsageQuotas) { item in
+                            HStack(spacing: 8) {
+                                Text(item.category)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 98, alignment: .leading)
+                                    .fixedSize()
+                                compactQuotaPill(item: item)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.03))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+            
+            // Footer
+            if let lastFetched = viewModel.agyUsageLastFetched {
+                HStack {
+                    Text("Updated: \(formatDate(lastFetched))")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding(.top, 1)
+            }
+        }
+        .padding(10)
+        .frame(width: 324)
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
+        .onAppear {
+            if viewModel.agyUsageGroups.isEmpty && viewModel.agyUsageQuotas.isEmpty {
+                viewModel.fetchAgyUsage()
+            }
+        }
     }
     
     // Loading/Empty elements
@@ -3168,6 +3497,28 @@ struct FileIconView: View {
 }
 
 // MARK: - Tab Button & Progress Components
+
+struct CircularQuotaRing: View {
+    let fraction: Double
+    let color: Color
+    var size: CGFloat = 13
+    var lineWidth: CGFloat = 2.2
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.12), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: CGFloat(max(0.01, min(1.0, fraction))))
+                .stroke(
+                    color,
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: size, height: size)
+    }
+}
 
 struct TabButton: View {
     let title: String
@@ -4443,53 +4794,54 @@ extension DropdownView {
                     
                     Divider()
                     
-                    if showAllModels {
+                    if showAllModels || viewModel.favoriteModels.isEmpty {
                         let providers = Array(Set(viewModel.availableModels.compactMap { $0.components(separatedBy: "/").first })).sorted()
                         if providers.isEmpty {
                             Button("No Models Found") {}
                                 .disabled(true)
                         } else {
                             ForEach(providers, id: \.self) { provider in
-                                Section(header: Text(provider)) {
+                                let displayTitle: String = {
+                                    switch provider.lowercased() {
+                                    case "antigravity", "agy": return "Antigravity (agy)"
+                                    case "codex": return "Codex"
+                                    case "opencode": return "Opencode"
+                                    default: return provider.capitalized
+                                    }
+                                }()
+                                Section(header: Text(displayTitle)) {
                                     let providerModels = viewModel.availableModels.filter { $0.hasPrefix(provider + "/") }
                                     ForEach(providerModels, id: \.self) { model in
                                         let isFav = viewModel.favoriteModels.contains(model)
+                                        let isSelected = (model == viewModel.selectedModel ||
+                                                          model.hasSuffix("/" + viewModel.selectedModel) ||
+                                                          viewModel.selectedModel.hasSuffix("/" + model))
+                                        let cleanName = model.components(separatedBy: "/").last ?? model
+                                        let title = isSelected ? "✓  \(cleanName)" : "    \(cleanName)"
+                                        let starBadge = isFav ? "  ★" : ""
+                                        
                                         Button(action: {
                                             viewModel.changeSelectedModel(model)
                                         }) {
-                                            HStack {
-                                                Text(model.components(separatedBy: "/").last ?? model)
-                                                if isFav {
-                                                    Image(systemName: "star.fill")
-                                                }
-                                                if model == viewModel.selectedModel {
-                                                    Image(systemName: "checkmark")
-                                                }
-                                            }
+                                            Label("\(title)\(starBadge)", systemImage: isSelected ? "checkmark" : (isFav ? "star.fill" : ""))
                                         }
                                     }
                                 }
                             }
                         }
                     } else {
-                        // Favorites section (default view)
-                        if viewModel.favoriteModels.isEmpty {
-                            Button("No Favorite Models") {}
-                                .disabled(true)
-                        } else {
-                            Section("Favorite Models") {
-                                ForEach(viewModel.favoriteModels, id: \.self) { model in
-                                    Button(action: {
-                                        viewModel.changeSelectedModel(model)
-                                    }) {
-                                        HStack {
-                                            Text(model.components(separatedBy: "/").last ?? model)
-                                            if model == viewModel.selectedModel {
-                                                Image(systemName: "checkmark")
-                                            }
-                                            Image(systemName: "star.fill")
-                                        }
-                                    }
+                        // Favorites section
+                        Section("Favorite Models") {
+                            ForEach(viewModel.favoriteModels, id: \.self) { model in
+                                let isSelected = (model == viewModel.selectedModel ||
+                                                  model.hasSuffix("/" + viewModel.selectedModel) ||
+                                                  viewModel.selectedModel.hasSuffix("/" + model))
+                                let cleanName = model.components(separatedBy: "/").last ?? model
+                                let title = isSelected ? "✓  \(cleanName)" : "    \(cleanName)"
+                                Button(action: {
+                                    viewModel.changeSelectedModel(model)
+                                }) {
+                                    Label("\(title)  ★", systemImage: isSelected ? "checkmark" : "star.fill")
                                 }
                             }
                         }
@@ -4745,7 +5097,7 @@ extension DropdownView {
                     
                     let activeModel = viewModel.selectedModel
                     let isCodexSelected = activeModel.hasPrefix("codex/") || activeModel == "codex"
-                    let isAntigravitySelected = activeModel.hasPrefix("antigravity/") || activeModel == "antigravity"
+                    let isAntigravitySelected = activeModel.hasPrefix("antigravity/") || activeModel == "antigravity" || activeModel.hasPrefix("agy/") || activeModel == "agy"
                     let isOpencodeSelected = activeModel.hasPrefix("opencode/") || activeModel == "opencode"
                     
                     let isMissingSelectedCLI = (isCodexSelected && !viewModel.isCodexInstalled) ||

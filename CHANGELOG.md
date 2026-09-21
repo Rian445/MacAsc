@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.3.0] - 2026-09-22
+
+### ✨ Added
+- **Antigravity CLI Quota Tracking (`agy --output-format json -p /usage`)**:
+  - Direct integration into **Disk Insight (Tab 1)** in an "Antigravity Quota" card placed under Pinned Folders.
+  - Dedicated popover gauge inside **Chat with AI (Tab 4)** beside the model picker.
+- **Exact Floating-Point Precision**:
+  - Parses `--output-format json` to extract `remaining_fraction` at 2-decimal precision (e.g. `99.83%`, `99.10%`, `100.00%`) instead of CLI-truncated integers.
+- **Direct Reset Countdown Timers**:
+  - Dynamically computes and displays remaining reset countdowns directly on the pills (e.g. `⏱ in 78h 5m`, `⏱ in 3h 54m`, or `✓ Available`).
+- **Symmetrical 1-Line Circular UI (`CircularQuotaRing`)**:
+  - Replaced horizontal progress bars with compact circular progress rings and balanced `maxWidth: .infinity` pills, creating a clean, symmetrical 1-line layout for both Gemini and Claude + GPT models without text clipping.
+- **Dedicated On-Demand Quota Refresh Button**:
+  - Added an independent `↻` button beside the "Antigravity Quota" header on Disk Insight, allowing instant quota refreshes without triggering full-disk or application scans.
+
+### 🧹 Refactored & Improved
+- **Unbiased AI Model Selection**:
+  - Removed hardcoded default favorite model (`opencode/deepseek-v4-flash-free`), allowing user-selected models to persist without unwanted fallbacks or forced defaults.
+- **Enhanced CLI Model Routing**:
+  - Added seamless prefix handling for `agy/` and `antigravity/` model identifiers.
+- **Zero Idle Overhead Guarantee**:
+  - Zero background daemons, zero continuous polling; quota checks are executed strictly on-demand, preserving 0.0% CPU and 0 MB idle memory.
+
+---
+
 ## [1.2.0] - 2026-08-22
 
 ### ✨ Added

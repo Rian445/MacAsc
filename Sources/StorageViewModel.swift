@@ -51,6 +51,13 @@ class StorageViewModel: ObservableObject {
     @Published var selectedLogo: String = "walter"
     @Published var selectedRecordLogo: String = "phoenix"
     
+    // Antigravity Usage Quotas
+    @Published var agyUsageGroups: [AgyUsageGroup] = []
+    @Published var agyUsageQuotas: [AgyUsageQuota] = []
+    @Published var isFetchingAgyUsage: Bool = false
+    @Published var agyUsageLastFetched: Date? = nil
+    @Published var agyUsageError: String? = nil
+    
     // Screen Recorder state variables
     @Published var screenRecordResolution: String = "native"
     @Published var screenRecordCaptureMode: String = "fullscreen"
@@ -550,31 +557,24 @@ class StorageViewModel: ObservableObject {
     }
 
     /// Loads the selected AI model and starts loading all available models
-    /// Loads the selected AI model and starts loading all available models
     private func loadSelectedModel() {
         let savedModel = UserDefaults.standard.string(forKey: "AISelectedModel") ?? ""
-        if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") || savedModel.contains("Local LLM") {
-            self.selectedModel = "opencode/deepseek-v4-flash-free"
-            UserDefaults.standard.set("opencode/deepseek-v4-flash-free", forKey: "AISelectedModel")
+        if savedModel.isEmpty || savedModel.contains("Gemma") || savedModel.contains("270M") || savedModel.contains("1B") || savedModel.contains("Local LLM") || savedModel.contains("deepseek-v4-flash-free") {
+            self.selectedModel = ""
         } else {
             self.selectedModel = savedModel
         }
         
         self.favoriteModels = UserDefaults.standard.stringArray(forKey: "AIFavoriteModels") ?? []
         
-        // Remove legacy Gemma/Local LLM models
-        self.favoriteModels.removeAll { $0.contains("Gemma") || $0.contains("Local LLM") || $0.contains("gemini-3.5-flash") }
-        
-        // Pre-populate default favorite models if empty
-        if self.favoriteModels.isEmpty {
-            self.favoriteModels = [
-                "opencode/deepseek-v4-flash-free"
-            ]
-        } else {
-            if !self.favoriteModels.contains("opencode/deepseek-v4-flash-free") {
-                self.favoriteModels.append("opencode/deepseek-v4-flash-free")
-            }
+        // Remove legacy models and deepseek-v4-flash-free from favorites
+        self.favoriteModels.removeAll {
+            $0.contains("Gemma") ||
+            $0.contains("Local LLM") ||
+            $0.contains("gemini-3.5-flash") ||
+            $0.contains("deepseek-v4-flash-free")
         }
+        
         UserDefaults.standard.set(self.favoriteModels, forKey: "AIFavoriteModels")
         self.availableModels = self.favoriteModels
         loadAvailableModels()
@@ -592,50 +592,62 @@ class StorageViewModel: ObservableObject {
 
     /// Queries installed CLI agents (opencode, codex, antigravity) in background to list available models
     func loadAvailableModels() {
-        // Note: checkCLIInstallations() is called by the caller (refresh/init) — no need to repeat here
         Task {
+            // Ensure fresh detection of installed CLIs
+            let (opencodePath, codexPath, antigravityPath) = await MainActor.run { () -> (String?, String?, String?) in
+                self.checkCLIInstallations()
+                return (self.getOpencodeBinaryPath(), self.getCodexBinaryPath(), self.getAntigravityBinaryPath())
+            }
+            
+            async let opencodeTask: [String] = {
+                guard let path = opencodePath else { return [] }
+                return await self.fetchModelsFromCLI(path: path, args: ["models"])
+            }()
+            
+            async let codexTask: [String] = {
+                guard let path = codexPath else { return [] }
+                return await self.fetchCodexDynamicModels(path: path)
+            }()
+            
+            async let antigravityTask: [String] = {
+                guard let path = antigravityPath else { return [] }
+                return await self.fetchAntigravityDynamicModels(path: path)
+            }()
+            
+            let (opencodeModels, codexModels, antigravityModels) = await (opencodeTask, codexTask, antigravityTask)
+            
             var combinedModels: [String] = []
             
-            // 1. Fetch opencode models if installed
-            if let opencodePath = getOpencodeBinaryPath() {
-                let opencodeModels = await fetchModelsFromCLI(path: opencodePath, args: ["models"])
-                for m in opencodeModels {
-                    let formatted = m.hasPrefix("opencode/") ? m : "opencode/\(m)"
-                    if !combinedModels.contains(formatted) {
-                        combinedModels.append(formatted)
-                    }
+            for m in opencodeModels {
+                let formatted = m.hasPrefix("opencode/") ? m : "opencode/\(m)"
+                if !combinedModels.contains(formatted) {
+                    combinedModels.append(formatted)
                 }
             }
             
-            // 2. Fetch codex models dynamically if installed
-            if let codexPath = getCodexBinaryPath() {
-                let codexModels = await fetchCodexDynamicModels(path: codexPath)
-                for m in codexModels {
-                    let formatted = m.hasPrefix("codex/") ? m : "codex/\(m)"
-                    if !combinedModels.contains(formatted) {
-                        combinedModels.append(formatted)
-                    }
+            for m in codexModels {
+                let formatted = m.hasPrefix("codex/") ? m : "codex/\(m)"
+                if !combinedModels.contains(formatted) {
+                    combinedModels.append(formatted)
                 }
             }
             
-            // 3. Fetch antigravity models dynamically if installed
-            if let antigravityPath = getAntigravityBinaryPath() {
-                let antigravityModels = await fetchModelsFromCLI(path: antigravityPath, args: ["models"])
-                for m in antigravityModels {
-                    let formatted = m.hasPrefix("antigravity/") ? m : "antigravity/\(m)"
-                    if !combinedModels.contains(formatted) {
-                        combinedModels.append(formatted)
-                    }
+            for m in antigravityModels {
+                let formatted = m.hasPrefix("antigravity/") ? m : "antigravity/\(m)"
+                if !combinedModels.contains(formatted) {
+                    combinedModels.append(formatted)
                 }
             }
             
             await MainActor.run {
                 self.availableModels = combinedModels
-                if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("Local LLM") {
-                    if let first = combinedModels.first {
+                if self.selectedModel.isEmpty || self.selectedModel.contains("Gemma") || self.selectedModel.contains("Local LLM") || self.selectedModel.contains("deepseek-v4-flash-free") {
+                    if let firstFav = self.favoriteModels.first, !firstFav.isEmpty {
+                        self.selectedModel = firstFav
+                    } else if let first = combinedModels.first {
                         self.selectedModel = first
                     } else {
-                        self.selectedModel = "opencode/deepseek-v4-flash-free"
+                        self.selectedModel = ""
                     }
                     UserDefaults.standard.set(self.selectedModel, forKey: "AISelectedModel")
                 }
@@ -705,7 +717,11 @@ class StorageViewModel: ObservableObject {
                     if let output = String(data: data, encoding: .utf8) {
                         let lines = output.components(separatedBy: .newlines)
                             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            .filter { !$0.isEmpty && !$0.contains(" ") && ($0.contains("/") || $0.contains("-")) }
+                            .compactMap { line -> String? in
+                                guard !line.isEmpty else { return nil }
+                                let token = line.components(separatedBy: .whitespaces).first ?? ""
+                                return (!token.isEmpty && (token.contains("/") || token.contains("-")) && !token.contains("...")) ? token : nil
+                            }
                         continuation.resume(returning: lines)
                         return
                     }
@@ -749,6 +765,288 @@ class StorageViewModel: ObservableObject {
         return models
     }
     
+    /// Dynamically parses available models from Antigravity / Agy CLI output
+    private func fetchAntigravityDynamicModels(path: String) async -> [String] {
+        let capturedEnv = makeCLIEnvironment()
+        let rawOutput: String? = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .background).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = ["models"]
+                process.environment = capturedEnv
+                
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    continuation.resume(returning: String(data: data, encoding: .utf8))
+                } catch {
+                    NSLog("Failed to query antigravity models: \(error.localizedDescription)")
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+        
+        var models: [String] = []
+        if let output = rawOutput {
+            let rawLines = output.replacingOccurrences(of: "\r", with: "\n").components(separatedBy: .newlines)
+            for line in rawLines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                if trimmed.contains("Fetching") || trimmed.contains("available models") || trimmed.hasPrefix("Usage:") {
+                    continue
+                }
+                let tokens = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                if let firstToken = tokens.first {
+                    if (firstToken.contains("-") || firstToken.contains("/")) && !firstToken.contains("...") {
+                        if !models.contains(firstToken) {
+                            models.append(firstToken)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Built-in fallback list of standard Antigravity models if CLI query timed out or had no network
+        if models.isEmpty {
+            models = [
+                "gemini-3.8-flash-high",
+                "gemini-3.8-flash-medium",
+                "gemini-3.8-flash-low",
+                "gemini-3.7-flash-high",
+                "gemini-3.7-flash-medium",
+                "gemini-3.7-flash-low",
+                "gemini-3.6-flash-high",
+                "gemini-3.6-flash-medium",
+                "gemini-3.6-flash-low",
+                "gemini-3.1-pro-high",
+                "gemini-3.1-pro-low",
+                "claude-sonnet-4-6",
+                "claude-opus-4-6-thinking",
+                "gpt-oss-120b-medium"
+            ]
+        }
+        
+        return models
+    }
+    
+    /// Runs `agy --output-format json -p /usage` and parses the exact decimal quota percentages and reset countdowns
+    func fetchAgyUsage() {
+        guard let binaryPath = getAntigravityBinaryPath() else {
+            self.agyUsageError = "Antigravity CLI (agy) not found."
+            return
+        }
+        
+        self.isFetchingAgyUsage = true
+        self.agyUsageError = nil
+        
+        Task.detached(priority: .userInitiated) {
+            let capturedEnv = await self.makeCLIEnvironment()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: binaryPath)
+            process.arguments = ["--output-format", "json", "-p", "/usage"]
+            process.environment = capturedEnv
+            
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            
+            var output = ""
+            var rawData = Data()
+            do {
+                try process.run()
+                process.waitUntilExit()
+                rawData = pipe.fileHandleForReading.readDataToEndOfFile()
+                output = String(data: rawData, encoding: .utf8) ?? ""
+            } catch {
+                await MainActor.run {
+                    self.isFetchingAgyUsage = false
+                    self.agyUsageError = "Failed to run agy /usage: \(error.localizedDescription)"
+                }
+                return
+            }
+            
+            var parsedGroups: [AgyUsageGroup] = []
+            var flatQuotas: [AgyUsageQuota] = []
+            
+            // Try decoding structured JSON from agy
+            struct AgyUsageJSONResponse: Decodable {
+                struct Command: Decodable {
+                    let name: String?
+                    let data: UsageData?
+                }
+                struct UsageData: Decodable {
+                    let description: String?
+                    let groups: [UsageGroup]?
+                }
+                struct UsageGroup: Decodable {
+                    let name: String
+                    let description: String?
+                    let buckets: [UsageBucket]?
+                }
+                struct UsageBucket: Decodable {
+                    let id: String?
+                    let name: String
+                    let description: String?
+                    let window: String?
+                    let remaining_fraction: Double?
+                    let reset_time: String?
+                }
+                let command: Command?
+            }
+            
+            let isoFormatter = ISO8601DateFormatter()
+            let df = DateFormatter()
+            df.dateStyle = .short
+            df.timeStyle = .short
+            
+            if let decoded = try? JSONDecoder().decode(AgyUsageJSONResponse.self, from: rawData),
+               let groups = decoded.command?.data?.groups, !groups.isEmpty {
+                for g in groups {
+                    var groupQuotas: [AgyUsageQuota] = []
+                    let groupDesc = g.description ?? ""
+                    for b in g.buckets ?? [] {
+                        let fraction = max(0.0, min(1.0, b.remaining_fraction ?? 1.0))
+                        let pctString = String(format: "%.2f%%", fraction * 100.0)
+                        let intPct = Int(round(fraction * 100.0))
+                        
+                        var refreshText = "Quota available"
+                        var formattedReset = ""
+                        
+                        if fraction >= 0.99999 {
+                            refreshText = "Quota available"
+                        } else if let resetStr = b.reset_time, !resetStr.isEmpty {
+                            var parsedDate = isoFormatter.date(from: resetStr)
+                            if parsedDate == nil {
+                                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                                parsedDate = isoFormatter.date(from: resetStr)
+                            }
+                            if let date = parsedDate {
+                                let diff = date.timeIntervalSince(Date())
+                                if diff <= 0 {
+                                    refreshText = "Quota available"
+                                } else {
+                                    let totalMins = Int(diff) / 60
+                                    let hours = totalMins / 60
+                                    let mins = totalMins % 60
+                                    if hours > 0 {
+                                        refreshText = "Refreshes in \(hours)h \(mins)m"
+                                    } else {
+                                        refreshText = "Refreshes in \(mins)m"
+                                    }
+                                }
+                                formattedReset = "Resets " + df.string(from: date)
+                            } else {
+                                refreshText = "Quota available"
+                                formattedReset = resetStr
+                            }
+                        }
+                        
+                        let quota = AgyUsageQuota(
+                            category: g.name,
+                            limitType: b.name,
+                            fraction: fraction,
+                            percent: intPct,
+                            percentageString: pctString,
+                            refreshString: refreshText,
+                            resetTime: formattedReset
+                        )
+                        groupQuotas.append(quota)
+                        flatQuotas.append(quota)
+                    }
+                    parsedGroups.append(AgyUsageGroup(name: g.name, description: groupDesc, quotas: groupQuotas))
+                }
+            }
+            
+            // Fallback to text parsing if JSON didn't yield groups
+            if parsedGroups.isEmpty {
+                for line in output.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty, !trimmed.hasPrefix("Quota:"), trimmed.contains("%") else { continue }
+                    
+                    let parts = trimmed.components(separatedBy: "%")
+                    guard parts.count >= 2 else { continue }
+                    let left = parts[0]
+                    let right = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    let leftTokens = left.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                    guard let pctToken = leftTokens.last, let floatVal = Double(pctToken) else { continue }
+                    
+                    let fullLabel = leftTokens.dropLast().joined(separator: " ")
+                    var category = fullLabel
+                    var limitType = "Limit"
+                    
+                    if fullLabel.contains("Weekly Limit Remaining") {
+                        category = fullLabel.replacingOccurrences(of: "Weekly Limit Remaining", with: "").trimmingCharacters(in: .whitespaces)
+                        limitType = "Weekly Limit Remaining"
+                    } else if fullLabel.contains("Five Hour Limit Remaining") {
+                        category = fullLabel.replacingOccurrences(of: "Five Hour Limit Remaining", with: "").trimmingCharacters(in: .whitespaces)
+                        limitType = "Five Hour Limit Remaining"
+                    } else if fullLabel.contains("Limit Remaining") {
+                        category = fullLabel.replacingOccurrences(of: "Limit Remaining", with: "").trimmingCharacters(in: .whitespaces)
+                        limitType = "Limit Remaining"
+                    }
+                    
+                    let fraction = floatVal / 100.0
+                    let pctString = String(format: "%.2f%%", floatVal)
+                    var formattedReset = right
+                    var refreshText = floatVal >= 99.999 ? "Quota available" : right
+                    
+                    if let date = isoFormatter.date(from: right) {
+                        let diff = date.timeIntervalSince(Date())
+                        if diff <= 0 {
+                            refreshText = "Quota available"
+                        } else {
+                            let totalMins = Int(diff) / 60
+                            let hours = totalMins / 60
+                            let mins = totalMins % 60
+                            if hours > 0 {
+                                refreshText = "Refreshes in \(hours)h \(mins)m"
+                            } else {
+                                refreshText = "Refreshes in \(mins)m"
+                            }
+                        }
+                        formattedReset = "Resets " + df.string(from: date)
+                    }
+                    
+                    let q = AgyUsageQuota(
+                        category: category,
+                        limitType: limitType,
+                        fraction: fraction,
+                        percent: Int(round(floatVal)),
+                        percentageString: pctString,
+                        refreshString: refreshText,
+                        resetTime: formattedReset
+                    )
+                    flatQuotas.append(q)
+                }
+            }
+            
+            let finalGroups = parsedGroups
+            let finalQuotas = flatQuotas
+            let finalOutput = output
+            
+            await MainActor.run {
+                self.isFetchingAgyUsage = false
+                if finalGroups.isEmpty && finalQuotas.isEmpty {
+                    if finalOutput.contains("unexpected argument") || finalOutput.contains("Error") {
+                        self.agyUsageError = finalOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    } else {
+                        self.agyUsageError = "No quota limits returned by agy."
+                    }
+                } else {
+                    self.agyUsageGroups = finalGroups
+                    self.agyUsageQuotas = finalQuotas
+                    self.agyUsageLastFetched = Date()
+                }
+            }
+        }
+    }
+    
     /// Persists a Tweak setting toggle and reloads preferences
     func setTweak(_ key: String, value: Bool) {
         UserDefaults.standard.set(value, forKey: key)
@@ -767,6 +1065,11 @@ class StorageViewModel: ObservableObject {
         // Check for CLI agent installations and reload available models
         checkCLIInstallations()
         loadAvailableModels()
+        
+        // Refresh agy quota if Antigravity CLI is installed
+        if isAntigravityInstalled {
+            fetchAgyUsage()
+        }
         
         // Scan pinned folder sizes in background
         scanPinnedFolderSizes()
@@ -1846,10 +2149,10 @@ class StorageViewModel: ObservableObject {
                 cliType = "codex"
                 binaryPath = await self.getCodexBinaryPath()
                 targetModelArg = model.replacingOccurrences(of: "codex/", with: "")
-            } else if model.hasPrefix("antigravity/") || model == "antigravity" {
+            } else if model.hasPrefix("antigravity/") || model == "antigravity" || model.hasPrefix("agy/") || model == "agy" {
                 cliType = "antigravity"
                 binaryPath = await self.getAntigravityBinaryPath()
-                targetModelArg = model.replacingOccurrences(of: "antigravity/", with: "")
+                targetModelArg = model.replacingOccurrences(of: "antigravity/", with: "").replacingOccurrences(of: "agy/", with: "")
             } else {
                 cliType = "opencode"
                 binaryPath = await self.getOpencodeBinaryPath()
@@ -3154,3 +3457,23 @@ struct TimeEvent: Identifiable, Codable, Equatable {
     var restartCount: Int = 0
     var lastNotified24hDate: Date? = nil
 }
+
+struct AgyUsageGroup: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var description: String
+    var quotas: [AgyUsageQuota]
+}
+
+struct AgyUsageQuota: Identifiable, Codable {
+    var id: UUID = UUID()
+    var category: String = ""
+    var limitType: String = ""
+    var fraction: Double = 1.0
+    var percent: Int = 100
+    var percentageString: String = "100.00%"
+    var refreshString: String = "Quota available"
+    var resetTime: String = ""
+}
+
+

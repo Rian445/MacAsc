@@ -38,6 +38,7 @@ Mac ASC combines system storage management, custom shell automation, instant not
 - **Visual Storage Breakdown**: Interactive progress bars categorizing Applications, Developer Caches (`.build`), Documents, Media, and System files.
 - **External Volume Scanner**: Real-time detection of USB drives, SD cards, and Thunderbolt disks with one-click safe volume ejection.
 - **Pinned Folder Tracker**: Pin custom directories to monitor size changes and jump directly to Finder.
+- **Antigravity AI Quota Monitor**: High-precision 2-decimal quota tracking (`99.83%`) for Gemini and Claude + GPT with circular rings, reset countdowns, and a dedicated `↻` refresh button.
 - 📖 *Want to learn more? Read the complete [Disk Insight User Manual](docs/DISK_INSIGHT.md).*
 
 ### ⚡ 2. Custom Shell Script Commands (Terminal & Silent Modes)
@@ -54,6 +55,8 @@ Mac ASC combines system storage management, custom shell automation, instant not
 
 ### 🤖 4. Multi-Model CLI AI Assistant
 - **System CLI Compatibility**: Integrates directly with installed AI CLI tools (`opencode`, OpenAI `codex`, Google `antigravity` / `agy`).
+- **Live Antigravity Quota Popover**: Pop open real-time usage metrics and reset countdowns directly from the chat header.
+- **Unbiased Model Selection**: Clean model picker and favorites without forced defaults or hardcoded fallbacks.
 - **Interactive Terminal Handoff**: Resume active chat threads directly in Terminal with `cd` workspace navigation.
 - 📖 *Want to learn more? Read the complete [AI Assistant User Manual](docs/AI_ASSISTANT.md) and technical [AI Architecture Guide](AI_ARCHITECTURE.md).*
 

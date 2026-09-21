@@ -29,6 +29,13 @@ Welcome to the **Multi-Model CLI AI Assistant** user guide for Mac ASC. This mod
 4. **Interactive Terminal Handoff**:
    - Click the **Terminal Icon** on any chat thread to open an interactive session directly inside macOS Terminal (`Terminal.app`) with automatically bound session hashes (`--session` / `--conversation`).
 
+5. **Antigravity Quota Usage Popover**:
+   - When Google Antigravity (`agy`) is installed, a quota gauge icon appears directly beside the model picker.
+   - Click it to reveal a minimal popover displaying exact real-time percentages (`99.83%`), circular progress rings, and relative countdown timers (`⏱ in Xh Ym`) without leaving your chat thread.
+
+6. **Unbiased Model Selection**:
+   - Zero hardcoded favorite models. You can freely choose your preferred model or mark your own favorites without any forced defaults.
+
 <p align="center">
   <img src="../Screenshots/ai_chat_attachment_terminal.png" width="480" alt="Workspace Attachments and Terminal Launcher"/>
 </p>
@@ -116,6 +123,12 @@ curl -fsSL https://antigravity.google.com/install.sh | bash
 1. Once an AI CLI session has generated code in Mac ASC, click the **Terminal Icon** in the chat header.
 2. Mac ASC launches macOS Terminal, navigates (`cd`) to your project directory, and resumes the active session hash (`opencode --session ses_...`).
 3. You can now continue the interactive conversation directly inside your command line!
+
+### Example 4: Checking Antigravity Quota from Chat
+1. In the **Chat with AI** tab (`⌘4`), look at the top header bar next to the model selection dropdown.
+2. Click the **Gauge Icon** (`gauge.with.dots.needle.bottom.50percent`).
+3. A compact popover appears showing exact quota percentages (`99.83%`), circular progress rings, and reset countdowns for Gemini and Claude + GPT models.
+4. Click anywhere outside the popover to dismiss it instantly.
 
 ---
 
