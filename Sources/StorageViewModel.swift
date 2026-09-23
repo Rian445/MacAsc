@@ -1440,8 +1440,13 @@ class StorageViewModel: ObservableObject {
             exit 1
         fi
         
-        echo "📦 Step 1/3: Tapping repository..."
-        brew tap Rian445/MacAsc https://github.com/Rian445/MacAsc.git
+        echo "📦 Step 1/3: Updating tap repository..."
+        TAP_DIR="$(brew --repo 2>/dev/null)/Library/Taps/rian445/homebrew-macasc"
+        if [ -d "$TAP_DIR" ]; then
+            git -C "$TAP_DIR" pull --quiet 2>/dev/null || true
+        else
+            brew tap Rian445/MacAsc https://github.com/Rian445/MacAsc.git
+        fi
         echo ""
         
         echo "🔐 Step 2/3: Trusting tap..."
@@ -1449,7 +1454,7 @@ class StorageViewModel: ObservableObject {
         echo ""
         
         echo "⚡ Step 3/3: Installing / Upgrading Mac ASC Cask..."
-        brew upgrade --cask --force macasc 2>/dev/null || brew install --cask --force macasc || brew reinstall --cask macasc
+        brew reinstall --cask macasc 2>/dev/null || brew upgrade --cask --force macasc 2>/dev/null || brew install --cask --force macasc
         echo ""
         
         echo "✅ ======================================="
