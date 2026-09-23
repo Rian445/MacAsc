@@ -1423,7 +1423,7 @@ class StorageViewModel: ObservableObject {
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("macasc_update.command")
         
-        let scriptContent = """
+        let scriptContent = #"""
         #!/bin/bash
         clear
         echo "🚀 ======================================="
@@ -1440,7 +1440,13 @@ class StorageViewModel: ObservableObject {
             exit 1
         fi
         
-        echo "📦 Step 1/3: Updating tap repository..."
+        echo "🛑 Step 1/4: Quitting running Mac ASC app to prepare for update..."
+        killall "Mac ASC" 2>/dev/null || pkill -f "Mac ASC" 2>/dev/null || true
+        sleep 1
+        echo "   App quit successfully."
+        echo ""
+        
+        echo "📦 Step 2/4: Updating tap repository..."
         TAP_DIR="$(brew --repo 2>/dev/null)/Library/Taps/rian445/homebrew-macasc"
         if [ -d "$TAP_DIR" ]; then
             git -C "$TAP_DIR" pull --quiet 2>/dev/null || true
@@ -1449,21 +1455,36 @@ class StorageViewModel: ObservableObject {
         fi
         echo ""
         
-        echo "🔐 Step 2/3: Trusting tap..."
+        echo "🔐 Step 3/4: Trusting tap..."
         brew trust rian445/macasc 2>/dev/null || true
         echo ""
         
-        echo "⚡ Step 3/3: Installing / Upgrading Mac ASC Cask..."
+        echo "⚡ Step 4/4: Installing / Upgrading Mac ASC Cask..."
         brew reinstall --cask macasc 2>/dev/null || brew upgrade --cask --force macasc 2>/dev/null || brew install --cask --force macasc
         echo ""
         
-        echo "✅ ======================================="
-        echo "   Mac ASC update completed!"
-        echo "   You can now launch the updated app."
-        echo "   ======================================="
+        echo -e "\033[1;36m  __  __   _    ____     _    ____   ____ \033[0m"
+        echo -e "\033[1;36m |  \/  | / \  / ___|   / \  / ___| / ___|\033[0m"
+        echo -e "\033[1;36m | |\/| |/ _ \| |      / _ \ \___ \| |    \033[0m"
+        echo -e "\033[1;36m | |  | / ___ \ |___  / ___ \ ___) | |___ \033[0m"
+        echo -e "\033[1;36m |_|  |/_/   \_\_____/_/   \_\____/ \____|\033[0m"
+        echo -e "\033[1;32m  _   _ ____  ____    _  _____ _____ ____  \033[0m"
+        echo -e "\033[1;32m | | | |  _ \|  _ \  / \|_   _| ____|  _ \ \033[0m"
+        echo -e "\033[1;32m | | | | |_) | | | |/ _ \ | | |  _| | | | |\033[0m"
+        echo -e "\033[1;32m | |_| |  __/| |_| / ___ \| | | |___| |_| |\033[0m"
+        echo -e "\033[1;32m  \___/|_|   |____/_/   \_\_| |_____|____/ \033[0m"
+        echo ""
+        echo "  ======================================================="
+        echo "   🎉 Mac ASC has been successfully updated! 🎉"
+        echo "   Previous app was quit. Restarting Mac ASC now..."
+        echo "   (You can close this Terminal window at any time)"
+        echo "  ======================================================="
+        echo ""
+        echo "🚀 Relaunching Mac ASC..."
+        open -a "Mac ASC" 2>/dev/null || open /Applications/"Mac ASC.app" 2>/dev/null || true
         echo ""
         exec $SHELL
-        """
+        """#
         
         do {
             try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
