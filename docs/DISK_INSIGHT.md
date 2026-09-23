@@ -15,12 +15,14 @@ Welcome to the **Disk Insight & Drive Storage** user guide for Mac ASC. This mod
 ## 🔍 Key Capabilities
 
 1. **Categorized Storage Breakdown**:
-   - Visualizes disk space distribution into 5 distinct categories:
+   - Displays real-time **Free Space** and used capacity at a glance in the drive header.
+   - Visualizes disk space distribution into categories:
      - 🔵 **Applications**: Installed macOS software packages.
      - 🟣 **Developer Files**: Xcode caches, Swift build directories (`.build`), package managers, and node modules.
      - 🟠 **Documents**: User documents, text files, and PDFs.
      - 🟢 **Media Files**: Images, audio tracks, and video files.
      - ⚪ **System & Other**: macOS system runtime, OS snapshots, and uncategorized files.
+     - 🔘 **Free Space**: Remaining available capacity on your drive.
 
 2. **Multi-Drive & External Storage Monitor**:
    - Automatically detects external USB drives, SD cards, and Thunderbolt disks.
@@ -66,7 +68,7 @@ Welcome to the **Disk Insight & Drive Storage** user guide for Mac ASC. This mod
 4. Click the folder icon anytime to open it directly in Finder.
 
 ### Example 4: Checking & Refreshing Antigravity Quota
-1. On the **Disk Insight** tab (`⌘1`), scroll down below Pinned Folders to the **Antigravity Quota** section.
+1. On the **Disk Insight** tab (`⌘1`), locate the **Antigravity Quota** section directly above Pinned Folders.
 2. View your exact quota remaining for **Gemini** and **Claude + GPT** across Weekly and 5-Hour limits, complete with live reset countdowns.
 3. If you recently prompted an AI model and want updated numbers immediately, click the `↻` icon beside **Antigravity Quota**. It queries `agy` directly without rescanning your local storage or applications.
 

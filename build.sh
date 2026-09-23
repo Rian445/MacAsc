@@ -162,3 +162,13 @@ hdiutil create -volname "Mac ASC" -srcfolder "$DMG_TEMP_DIR" -ov -format UDZO "$
 rm -rf "$DMG_TEMP_DIR"
 
 echo "=== DMG Created Successfully: ${DMG_NAME} ==="
+
+# Automatically calculate and update SHA-256 checksum in Homebrew Cask
+CASK_FILE="Casks/macasc.rb"
+if [ -f "$CASK_FILE" ]; then
+    echo "=== Updating SHA-256 Checksum in ${CASK_FILE} ==="
+    NEW_SHA=$(shasum -a 256 "$DMG_NAME" | awk '{print $1}')
+    sed -i '' -E "s/sha256 \"[a-f0-9]{64}\"/sha256 \"${NEW_SHA}\"/" "$CASK_FILE"
+    echo "Updated ${CASK_FILE} with SHA-256: ${NEW_SHA}"
+fi
+

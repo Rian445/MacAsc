@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### ✨ Added
 - **Antigravity CLI Quota Tracking (`agy --output-format json -p /usage`)**:
-  - Direct integration into **Disk Insight (Tab 1)** in an "Antigravity Quota" card placed under Pinned Folders.
+  - Direct integration into **Disk Insight (Tab 1)** in an "Antigravity Quota" card placed above Pinned Folders.
   - Dedicated popover gauge inside **Chat with AI (Tab 4)** beside the model picker.
 - **Exact Floating-Point Precision**:
   - Parses `--output-format json` to extract `remaining_fraction` at 2-decimal precision (e.g. `99.83%`, `99.10%`, `100.00%`) instead of CLI-truncated integers.
@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Replaced horizontal progress bars with compact circular progress rings and balanced `maxWidth: .infinity` pills, creating a clean, symmetrical 1-line layout for both Gemini and Claude + GPT models without text clipping.
 - **Dedicated On-Demand Quota Refresh Button**:
   - Added an independent `↻` button beside the "Antigravity Quota" header on Disk Insight, allowing instant quota refreshes without triggering full-disk or application scans.
+- **Macintosh HD Free Space Indicator**:
+  - Added bold real-time free space readout directly in the internal SSD header, and added Free Space into the breakdown legend grid for a symmetrical 3×2 layout.
+- **One-Click Homebrew Terminal Updater**:
+  - Added an interactive "Update App via Homebrew" button inside the About popover that launches Terminal with full step-by-step progress to update the cask.
+- **Automated Cask Checksum Pipeline**:
+  - `./build.sh` automatically computes and updates `Casks/macasc.rb` with the new SHA-256 hash immediately after packaging `Mac_ASC.dmg`.
 
 ### 🧹 Refactored & Improved
 - **Unbiased AI Model Selection**:

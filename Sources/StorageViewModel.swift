@@ -1418,6 +1418,58 @@ class StorageViewModel: ObservableObject {
         }
     }
     
+    /// Launches an interactive macOS Terminal window to update Mac ASC via Homebrew
+    func runUpdateInTerminal() {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("macasc_update.command")
+        
+        let scriptContent = """
+        #!/bin/bash
+        clear
+        echo "🚀 ======================================="
+        echo "   Updating Mac ASC via Homebrew"
+        echo "   ======================================="
+        echo ""
+        export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        
+        if ! command -v brew &> /dev/null; then
+            echo "❌ Error: Homebrew ('brew') was not found on your system."
+            echo "Please install Homebrew from https://brew.sh to use this updater."
+            echo ""
+            exec $SHELL
+            exit 1
+        fi
+        
+        echo "📦 Step 1/3: Tapping repository..."
+        brew tap Rian445/MacAsc https://github.com/Rian445/MacAsc.git
+        echo ""
+        
+        echo "🔐 Step 2/3: Trusting tap..."
+        brew trust rian445/macasc 2>/dev/null || true
+        echo ""
+        
+        echo "⚡ Step 3/3: Installing / Upgrading Mac ASC Cask..."
+        brew upgrade --cask --force macasc 2>/dev/null || brew install --cask --force macasc || brew reinstall --cask macasc
+        echo ""
+        
+        echo "✅ ======================================="
+        echo "   Mac ASC update completed!"
+        echo "   You can now launch the updated app."
+        echo "   ======================================="
+        echo ""
+        exec $SHELL
+        """
+        
+        do {
+            try scriptContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            let attributes = [FileAttributeKey.posixPermissions: NSNumber(value: 0o755)]
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: fileURL.path)
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            NSLog("Failed to launch update script in Terminal: \(error.localizedDescription)")
+        }
+    }
+    
     /// Scans for and terminates a specific terminal command by its unique ID using SIGINT (Ctrl+C) 4 times
     func stopCustomCommand(id: UUID) {
         // Remove from running IDs immediately

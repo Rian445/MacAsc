@@ -206,13 +206,13 @@ struct DropdownView: View {
                             // External Storage
                             externalStorageSection
                             
-                            // Pinned Folders
-                            pinnedFoldersSection
-                            
                             // Antigravity AI Quota Usage
                             if viewModel.isAntigravityInstalled {
                                 diskInsightAgyUsageSection
                             }
+                            
+                            // Pinned Folders
+                            pinnedFoldersSection
                             
                             // Breakdown Switcher and Lists
                             breakdownSection
@@ -2581,12 +2581,38 @@ extension DropdownView {
             Divider()
                 .background(Color.white.opacity(0.12))
             
-            HStack {
-                Spacer()
-                Text("Version 2.0.0")
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-                Spacer()
+            VStack(spacing: 8) {
+                HStack {
+                    Spacer()
+                    Text("Version 2.0.0")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                
+                Button(action: {
+                    showAboutPopover = false
+                    viewModel.runUpdateInTerminal()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "terminal.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Update App via Homebrew")
+                            .font(.system(size: 9.5, weight: .semibold))
+                    }
+                    .foregroundColor(.cyan)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.cyan.opacity(0.12))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Launch Terminal to update Mac ASC via Homebrew")
             }
         }
         .padding(16)
@@ -2596,7 +2622,7 @@ extension DropdownView {
     // Internal Storage Section
     private func internalStorageSection(for drive: DriveInfo) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(drive.name)
                         .font(.subheadline)
@@ -2606,22 +2632,37 @@ extension DropdownView {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Text("\(drive.formattedUsed) of \(drive.formattedTotal) used")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(drive.formattedFree)
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        Text("free")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Text("\(drive.formattedUsed) of \(drive.formattedTotal) used")
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.85))
+                }
             }
             
             // Stacked custom progress bar
             let segments = calculateSegments(for: drive, breakdown: viewModel.storageBreakdown)
             StackedProgressBar(segments: segments)
             
-            // Legend grid
+            // Legend grid (5 used categories + Free Space = symmetrical 3x2 grid)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                ForEach(segments.filter { $0.name != "Free Space" }) { segment in
+                ForEach(segments) { segment in
                     HStack(spacing: 6) {
                         Circle()
-                            .fill(segment.color)
+                            .fill(segment.name == "Free Space" ? Color.white.opacity(0.2) : segment.color)
                             .frame(width: 8, height: 8)
+                            .overlay(
+                                Circle()
+                                    .stroke(segment.name == "Free Space" ? Color.white.opacity(0.4) : Color.clear, lineWidth: 0.8)
+                            )
                         
                         Text(segment.name)
                             .font(.caption2)
@@ -2631,7 +2672,7 @@ extension DropdownView {
                         
                         Text(segment.formattedSize)
                             .font(.caption2)
-                            .foregroundColor(.primary)
+                            .foregroundColor(segment.name == "Free Space" ? .white.opacity(0.9) : .primary)
                             .fontWeight(.medium)
                     }
                 }
