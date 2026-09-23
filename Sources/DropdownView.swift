@@ -2956,11 +2956,7 @@ extension DropdownView {
                 
                 Spacer()
                 
-                if viewModel.isFetchingAgyUsage {
-                    ProgressView()
-                        .scaleEffect(0.55)
-                        .frame(width: 12, height: 12)
-                } else if let last = viewModel.agyUsageLastFetched {
+                if let last = viewModel.agyUsageLastFetched {
                     Text("Updated: \(formatDate(last))")
                         .font(.system(size: 8.5))
                         .foregroundColor(.secondary)
