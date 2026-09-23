@@ -15,8 +15,7 @@ Welcome to the **Disk Insight & Drive Storage** user guide for Mac ASC. This mod
 ## 🔍 Key Capabilities
 
 1. **Categorized Storage Breakdown**:
-   - Displays real-time **Free Space** and used capacity at a glance in the drive header.
-   - Visualizes disk space distribution into categories:
+   - Visualizes disk space distribution into balanced categories:
      - 🔵 **Applications**: Installed macOS software packages.
      - 🟣 **Developer Files**: Xcode caches, Swift build directories (`.build`), package managers, and node modules.
      - 🟠 **Documents**: User documents, text files, and PDFs.

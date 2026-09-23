@@ -2622,7 +2622,7 @@ extension DropdownView {
     // Internal Storage Section
     private func internalStorageSection(for drive: DriveInfo) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
+            HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(drive.name)
                         .font(.subheadline)
@@ -2632,20 +2632,9 @@ extension DropdownView {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(drive.formattedFree)
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        Text("free")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Text("\(drive.formattedUsed) of \(drive.formattedTotal) used")
-                        .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.85))
-                }
+                Text("\(drive.formattedUsed) of \(drive.formattedTotal) used")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             
             // Stacked custom progress bar
