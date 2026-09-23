@@ -45,6 +45,7 @@ struct DropdownView: View {
     @State private var newThreadTitleInput = ""
     @State private var newThreadFolderInput = ""
     @State private var showEditThreadDialog = false
+    @State private var isCreatingNewChatFolder = false
     @State private var showRemoveAttachmentPopover = false
     @State private var showAllModels = true
     @State private var showAgyUsagePopover = false
@@ -4766,6 +4767,218 @@ extension DropdownView {
         }
     }
     
+    /// Popover dialog for renaming or moving a chat thread to an existing or new folder
+    @ViewBuilder private func editThreadDialog(selectedId: UUID) -> some View {
+        let existingFolders = viewModel.existingChatFolders
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Edit Chat Thread")
+                .font(.caption)
+                .fontWeight(.bold)
+            
+            // Thread Title Field
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Title")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                TextField("Thread Title", text: $newThreadTitleInput)
+                    .textFieldStyle(.plain)
+                    .padding(6)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(4)
+                    .font(.system(size: 11))
+            }
+            
+            // Folder Field
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Folder")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isCreatingNewChatFolder.toggle()
+                            if isCreatingNewChatFolder {
+                                newThreadFolderInput = ""
+                            }
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: isCreatingNewChatFolder ? "list.bullet" : "folder.badge.plus")
+                                .font(.system(size: 8))
+                            Text(isCreatingNewChatFolder ? "Choose Existing" : "+ New Folder")
+                                .font(.system(size: 9.5, weight: .medium))
+                        }
+                        .foregroundColor(.cyan)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                if isCreatingNewChatFolder {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                        
+                        TextField("New folder name...", text: $newThreadFolderInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                        
+                        if !newThreadFolderInput.isEmpty {
+                            Button(action: { newThreadFolderInput = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(6)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.cyan.opacity(0.4), lineWidth: 1)
+                    )
+                } else {
+                    Menu {
+                        Button(action: {
+                            newThreadFolderInput = ""
+                        }) {
+                            HStack {
+                                Text("No Folder (Uncategorized)")
+                                if newThreadFolderInput.isEmpty {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        
+                        if !existingFolders.isEmpty {
+                            Divider()
+                            ForEach(existingFolders, id: \.self) { folder in
+                                Button(action: {
+                                    newThreadFolderInput = folder
+                                }) {
+                                    HStack {
+                                        Text(folder)
+                                        if newThreadFolderInput == folder {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Divider()
+                        Button(action: {
+                            withAnimation {
+                                isCreatingNewChatFolder = true
+                                newThreadFolderInput = ""
+                            }
+                        }) {
+                            Label("Create New Folder...", systemImage: "folder.badge.plus")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: newThreadFolderInput.isEmpty ? "folder.badge.minus" : "folder.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(newThreadFolderInput.isEmpty ? .secondary : .yellow)
+                            
+                            Text(newThreadFolderInput.isEmpty ? "No Folder (Uncategorized)" : newThreadFolderInput)
+                                .font(.system(size: 11))
+                                .foregroundColor(newThreadFolderInput.isEmpty ? .secondary : .white)
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(4)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+            }
+            
+            // Quick chips for existing folders if any exist
+            if !existingFolders.isEmpty && !isCreatingNewChatFolder {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Existing Folders:")
+                        .font(.system(size: 8.5))
+                        .foregroundColor(.secondary)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            Button(action: {
+                                newThreadFolderInput = ""
+                            }) {
+                                Text("None")
+                                    .font(.system(size: 9, weight: newThreadFolderInput.isEmpty ? .bold : .regular))
+                                    .foregroundColor(newThreadFolderInput.isEmpty ? .white : .secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(newThreadFolderInput.isEmpty ? Color.blue.opacity(0.35) : Color.white.opacity(0.06))
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            ForEach(existingFolders, id: \.self) { folder in
+                                let isSelected = newThreadFolderInput == folder
+                                Button(action: {
+                                    newThreadFolderInput = folder
+                                }) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "folder.fill")
+                                            .font(.system(size: 7))
+                                            .foregroundColor(isSelected ? .yellow : .secondary)
+                                        Text(folder)
+                                            .font(.system(size: 9, weight: isSelected ? .bold : .regular))
+                                    }
+                                    .foregroundColor(isSelected ? .white : .secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(isSelected ? Color.blue.opacity(0.35) : Color.white.opacity(0.06))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            HStack {
+                Button("Cancel") {
+                    showEditThreadDialog = false
+                    isChatInputFocused = true
+                }
+                .buttonStyle(.borderless)
+                .font(.caption2)
+                
+                Spacer()
+                
+                Button("Save") {
+                    viewModel.updateChatThread(id: selectedId, title: newThreadTitleInput, folder: newThreadFolderInput)
+                    showEditThreadDialog = false
+                    isChatInputFocused = true
+                }
+                .buttonStyle(.borderedProminent)
+                .font(.caption2)
+                .disabled(newThreadTitleInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(10)
+        .frame(width: 215)
+    }
+    
     private var aiChatSection: some View {
         VStack(spacing: 8) {
             // Thread Selection Control & Model Selection
@@ -5015,6 +5228,7 @@ extension DropdownView {
                             if let thread = viewModel.selectedThread {
                                 newThreadTitleInput = thread.title
                                 newThreadFolderInput = thread.folder ?? ""
+                                isCreatingNewChatFolder = false
                                 isChatInputFocused = false
                                 showEditThreadDialog = true
                             }
@@ -5029,47 +5243,7 @@ extension DropdownView {
                         .buttonStyle(.plain)
                         .help("Rename or move this chat thread")
                         .popover(isPresented: $showEditThreadDialog, arrowEdge: .bottom) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Edit Chat Thread")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                
-                                TextField("Thread Title", text: $newThreadTitleInput)
-                                    .textFieldStyle(.plain)
-                                    .padding(6)
-                                    .background(Color.white.opacity(0.08))
-                                    .cornerRadius(4)
-                                    .font(.system(size: 11))
-                                
-                                TextField("Folder (Optional)", text: $newThreadFolderInput)
-                                    .textFieldStyle(.plain)
-                                    .padding(6)
-                                    .background(Color.white.opacity(0.08))
-                                    .cornerRadius(4)
-                                    .font(.system(size: 11))
-                                
-                                HStack {
-                                    Button("Cancel") {
-                                        showEditThreadDialog = false
-                                        isChatInputFocused = true
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption2)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Save") {
-                                        viewModel.updateChatThread(id: selectedId, title: newThreadTitleInput, folder: newThreadFolderInput)
-                                        showEditThreadDialog = false
-                                        isChatInputFocused = true
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .font(.caption2)
-                                    .disabled(newThreadTitleInput.isEmpty)
-                                }
-                            }
-                            .padding(10)
-                            .frame(width: 180)
+                            editThreadDialog(selectedId: selectedId)
                         }
                     }
                     

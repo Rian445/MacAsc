@@ -83,6 +83,12 @@ class StorageViewModel: ObservableObject {
         chatThreads.first(where: { $0.id == selectedThreadId })
     }
     
+    var existingChatFolders: [String] {
+        Array(Set(chatThreads.compactMap { $0.folder?.trimmingCharacters(in: .whitespacesAndNewlines) }))
+            .filter { !$0.isEmpty }
+            .sorted()
+    }
+    
     
     // MARK: - Dependencies & Listeners
     private let storageManager = StorageManager()
