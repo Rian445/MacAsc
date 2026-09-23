@@ -4908,53 +4908,6 @@ extension DropdownView {
                 }
             }
             
-            // Quick chips for existing folders if any exist
-            if !existingFolders.isEmpty && !isCreatingNewChatFolder {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Existing Folders:")
-                        .font(.system(size: 8.5))
-                        .foregroundColor(.secondary)
-                    
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
-                            Button(action: {
-                                newThreadFolderInput = ""
-                            }) {
-                                Text("None")
-                                    .font(.system(size: 9, weight: newThreadFolderInput.isEmpty ? .bold : .regular))
-                                    .foregroundColor(newThreadFolderInput.isEmpty ? .white : .secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(newThreadFolderInput.isEmpty ? Color.blue.opacity(0.35) : Color.white.opacity(0.06))
-                                    .cornerRadius(4)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            ForEach(existingFolders, id: \.self) { folder in
-                                let isSelected = newThreadFolderInput == folder
-                                Button(action: {
-                                    newThreadFolderInput = folder
-                                }) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "folder.fill")
-                                            .font(.system(size: 7))
-                                            .foregroundColor(isSelected ? .yellow : .secondary)
-                                        Text(folder)
-                                            .font(.system(size: 9, weight: isSelected ? .bold : .regular))
-                                    }
-                                    .foregroundColor(isSelected ? .white : .secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(isSelected ? Color.blue.opacity(0.35) : Color.white.opacity(0.06))
-                                    .cornerRadius(4)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-            }
-            
             HStack {
                 Button("Cancel") {
                     showEditThreadDialog = false
