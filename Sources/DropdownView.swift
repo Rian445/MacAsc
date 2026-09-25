@@ -61,6 +61,10 @@ struct DropdownView: View {
     @State private var isCommandSortActive = false
     @State private var isNoteSortActive = false
     
+    // Edit Mode State
+    @State private var isCommandEditMode = false
+    @State private var isNotesListEditMode = false
+    
     // Folder Delete State
     @State private var folderToDelete: String? = nil
     @State private var isDeletingCommandFolder: Bool = true
@@ -3879,6 +3883,26 @@ extension DropdownView {
                         
                         Button(action: {
                             withAnimation(.easeInOut(duration: 0.2)) {
+                                isCommandEditMode.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isCommandEditMode ? "checkmark.circle.fill" : "pencil")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(isCommandEditMode ? "Done" : "Edit")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(isCommandEditMode ? Color.blue : Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isCommandEditMode ? "Finish editing commands" : "Edit saved commands")
+                        
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
                                 isCommandSortActive.toggle()
                             }
                         }) {
@@ -3949,6 +3973,7 @@ extension DropdownView {
                                 level: 0,
                                 collapsedFolders: $collapsedFolders,
                                 isCommandSortActive: isCommandSortActive,
+                                isCommandEditMode: isCommandEditMode,
                                 onDeleteFolder: { path in
                                     folderToDelete = path
                                     isDeletingCommandFolder = true
@@ -4072,36 +4097,38 @@ extension DropdownView {
                 .help("Stop this running command")
             }
             
-            // Edit Command Button
-            Button(action: {
-                editingCommand = cmd
-                newCommandName = cmd.name
-                newCommandString = cmd.command
-                newCommandFolder = cmd.folder ?? ""
-                newCommandTag = cmd.tag ?? ""
-                newCommandRunSilent = cmd.runSilent ?? false
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isAddFormExpanded = true
+            if isCommandEditMode {
+                // Edit Command Button
+                Button(action: {
+                    editingCommand = cmd
+                    newCommandName = cmd.name
+                    newCommandString = cmd.command
+                    newCommandFolder = cmd.folder ?? ""
+                    newCommandTag = cmd.tag ?? ""
+                    newCommandRunSilent = cmd.runSilent ?? false
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        isAddFormExpanded = true
+                    }
+                }) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.blue.opacity(0.8))
                 }
-            }) {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.caption2)
-                    .foregroundColor(.blue.opacity(0.8))
+                .buttonStyle(.plain)
+                .help("Edit command")
+                
+                // Delete Command Button
+                Button(action: {
+                    commandToDelete = cmd
+                    showDeleteConfirmation = true
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .help("Delete command")
             }
-            .buttonStyle(.plain)
-            .help("Edit command")
-            
-            // Delete Command Button
-            Button(action: {
-                commandToDelete = cmd
-                showDeleteConfirmation = true
-            }) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.caption2)
-                    .foregroundColor(.red.opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .help("Delete command")
         }
         .padding(8)
         .background(Color.white.opacity(0.03))
@@ -4509,6 +4536,26 @@ extension DropdownView {
                     
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.2)) {
+                            isNotesListEditMode.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: isNotesListEditMode ? "checkmark.circle.fill" : "pencil")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(isNotesListEditMode ? "Done" : "Edit")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(isNotesListEditMode ? Color.blue : Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isNotesListEditMode ? "Done editing" : "Edit notes")
+                    
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             isNoteSortActive.toggle()
                         }
                     }) {
@@ -4578,6 +4625,7 @@ extension DropdownView {
                                 level: 0,
                                 collapsedNotesFolders: $collapsedNotesFolders,
                                 isNoteSortActive: isNoteSortActive,
+                                isNotesListEditMode: isNotesListEditMode,
                                 onDeleteFolder: { path in
                                     folderToDelete = path
                                     isDeletingCommandFolder = false
@@ -4711,17 +4759,35 @@ extension DropdownView {
                 .buttonStyle(.plain)
                 .help("Copy content to clipboard")
                 
-                // Delete Note Button
-                Button(action: {
-                    noteToDelete = note
-                    showNoteDeleteConfirmation = true
-                }) {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.caption2)
-                        .foregroundColor(.red.opacity(0.7))
+                if isNotesListEditMode {
+                    // Edit Note Button
+                    Button(action: {
+                        editingNote = note
+                        newNoteTitle = note.title
+                        newNoteContent = note.content
+                        newNoteFolder = note.folder ?? ""
+                        isCreatingFullNote = false
+                        isNoteEditingMode = true
+                    }) {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.caption2)
+                            .foregroundColor(.blue.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit note")
+                    
+                    // Delete Note Button
+                    Button(action: {
+                        noteToDelete = note
+                        showNoteDeleteConfirmation = true
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.caption2)
+                            .foregroundColor(.red.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete note")
                 }
-                .buttonStyle(.plain)
-                .help("Delete note")
             }
         }
         .padding(8)
@@ -5600,6 +5666,7 @@ struct CommandFolderNodeView<CommandRow: View>: View {
     let level: Int
     @Binding var collapsedFolders: Set<String>
     let isCommandSortActive: Bool
+    var isCommandEditMode: Bool = false
     let onDeleteFolder: (String) -> Void
     let commandRowBuilder: (TerminalCommand) -> CommandRow
     
@@ -5649,15 +5716,17 @@ struct CommandFolderNodeView<CommandRow: View>: View {
                 }
                 .buttonStyle(.plain)
                 
-                Button(action: {
-                    onDeleteFolder(node.fullPath)
-                }) {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.red.opacity(0.8))
+                if isCommandEditMode {
+                    Button(action: {
+                        onDeleteFolder(node.fullPath)
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete folder '\(node.name)'")
                 }
-                .buttonStyle(.plain)
-                .help("Delete folder '\(node.name)'")
                 
                 if isCommandSortActive {
                     HStack(spacing: 2) {
@@ -5749,6 +5818,7 @@ struct CommandFolderNodeView<CommandRow: View>: View {
                             level: level + 1,
                             collapsedFolders: $collapsedFolders,
                             isCommandSortActive: isCommandSortActive,
+                            isCommandEditMode: isCommandEditMode,
                             onDeleteFolder: onDeleteFolder,
                             commandRowBuilder: commandRowBuilder
                         )
@@ -5772,6 +5842,7 @@ struct NoteFolderNodeView<NoteRow: View>: View {
     let level: Int
     @Binding var collapsedNotesFolders: Set<String>
     let isNoteSortActive: Bool
+    var isNotesListEditMode: Bool = false
     let onDeleteFolder: (String) -> Void
     let noteRowBuilder: (QuickNote) -> NoteRow
     
@@ -5821,15 +5892,17 @@ struct NoteFolderNodeView<NoteRow: View>: View {
                 }
                 .buttonStyle(.plain)
                 
-                Button(action: {
-                    onDeleteFolder(node.fullPath)
-                }) {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.red.opacity(0.8))
+                if isNotesListEditMode {
+                    Button(action: {
+                        onDeleteFolder(node.fullPath)
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.red.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete folder '\(node.name)'")
                 }
-                .buttonStyle(.plain)
-                .help("Delete folder '\(node.name)'")
                 
                 if isNoteSortActive {
                     HStack(spacing: 2) {
@@ -5921,6 +5994,7 @@ struct NoteFolderNodeView<NoteRow: View>: View {
                             level: level + 1,
                             collapsedNotesFolders: $collapsedNotesFolders,
                             isNoteSortActive: isNoteSortActive,
+                            isNotesListEditMode: isNotesListEditMode,
                             onDeleteFolder: onDeleteFolder,
                             noteRowBuilder: noteRowBuilder
                         )
