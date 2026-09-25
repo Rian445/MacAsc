@@ -3842,19 +3842,17 @@ extension DropdownView {
             
             // Saved Commands list
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Saved Commands")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 2)
+                Text("Saved Commands")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 2)
+                
+                if !viewModel.customCommands.isEmpty {
+                    let allCommandFolderPaths = getAllFolderPaths(from: viewModel.getCommandFolderTree())
+                    let areAllCommandFoldersCollapsed = !allCommandFolderPaths.isEmpty && allCommandFolderPaths.allSatisfy { collapsedFolders.contains($0) }
                     
-                    Spacer()
-                    
-                    if !viewModel.customCommands.isEmpty {
-                        let allCommandFolderPaths = getAllFolderPaths(from: viewModel.getCommandFolderTree())
-                        let areAllCommandFoldersCollapsed = !allCommandFolderPaths.isEmpty && allCommandFolderPaths.allSatisfy { collapsedFolders.contains($0) }
-                        
+                    HStack(spacing: 6) {
                         if !allCommandFolderPaths.isEmpty {
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -3919,6 +3917,8 @@ extension DropdownView {
                             .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
+                        
+                        Spacer()
                         
                         Button(action: {
                             viewModel.stopAllRunningCommands()
